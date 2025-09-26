@@ -397,7 +397,12 @@ const Profile = () => {
                         )}
                       </td>
                       <td className="px-4 py-2 text-right text-sm">
-                        <button onClick={() => openDetails(a)} className="text-blue-600 hover:text-blue-700">View</button>
+                        <button
+                          onClick={() => openDetails(a)}
+                          className="inline-flex items-center px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        >
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -434,6 +439,17 @@ const Profile = () => {
                   <div>
                     <p className="text-xs text-gray-500">Role</p>
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{detail.userType === 'super-admin' ? 'Super Admin' : 'Admin'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Admin Type</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {(() => {
+                        const perm = (detail as any)?.permission ?? (selectedAdmin as any)?.permission;
+                        if (perm === 'out-door-patient') return 'Out-door Patient';
+                        if (perm === 'over-the-counter') return 'Over-the-Counter';
+                        return '—';
+                      })()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Email Verified</p>
@@ -475,7 +491,7 @@ const Profile = () => {
               )}
             </div>
             <div className="bg-gray-50 dark:bg-gray-900 px-6 py-3 flex justify-end gap-3">
-              <button onClick={() => { setSelectedAdmin(null); setDetail(null); }} className="px-4 py-2 rounded-md border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">Close</button>
+              <button onClick={() => { setSelectedAdmin(null); setDetail(null); }} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white">Close</button>
             </div>
           </div>
         </div>

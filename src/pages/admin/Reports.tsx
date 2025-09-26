@@ -132,6 +132,23 @@ const Reports = () => {
 
   const hasRange = useMemo(() => Boolean(from || to), [from, to]);
 
+  // Helper: robustly fetch all consignments (tries URL with and without trailing slash, and both auth schemes)
+  const fetchAllConsignments = async (): Promise<ConsignmentInventory[]> => {
+    const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+    const urls = [
+      `${base}/pharmacy/consignments`,
+      `${base}/pharmacy/consignments/`,
+    ];
+    for (const u of urls) {
+      try {
+        let res = await authFetch(u, { method: 'GET' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data?.inventories)) return data.inventories as ConsignmentInventory[];
+      } catch { /* try next */ }
+    }
+    return [] as ConsignmentInventory[];
+  };
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -225,21 +242,25 @@ const Reports = () => {
           }
         } else if (tab === 'consignments') {
           if (hasRange && from && to) {
-            const { consignments } = await api.finance.consignmentsByDate({ start_date: from, end_date: to });
-            let arr = Array.isArray(consignments) ? consignments : [];
-            // Fallback: if API returns empty (or permission blocked), try allConsignments and filter client-side
-            if (arr.length === 0) {
-              const { inventories } = await api.pharmacy.allConsignments();
-              const allArr = Array.isArray(inventories) ? inventories : [];
-              arr = allArr.filter((c: any) => {
-                const ts = c?.timestamp || c?.purchase_date;
-                return inRange(ts);
-              });
+            if (user?.role === 'superadmin') {
+              // Superadmins: use finance date-range for consignments
+              const { consignments } = await api.finance.consignmentsByDate({ start_date: from, end_date: to });
+              let arr = Array.isArray(consignments) ? consignments : [];
+              // Fallback to all consignments if empty
+              if (arr.length === 0) {
+                const allArr = await fetchAllConsignments();
+                arr = allArr.filter((c: any) => inRange(c?.timestamp || c?.purchase_date));
+              }
+              if (!cancelled) setConsignments(arr as any);
+            } else {
+              // Admins: always use pharmacy all-consignments and filter client-side by date range
+              const allArr = await fetchAllConsignments();
+              const filtered = allArr.filter((c: any) => inRange(c?.timestamp || c?.purchase_date));
+              if (!cancelled) setConsignments(filtered as any);
             }
-            if (!cancelled) setConsignments(arr as any);
           } else {
-            const { inventories } = await api.pharmacy.allConsignments();
-            const arr = Array.isArray(inventories) ? inventories : [];
+            // No range -> show all consignments from pharmacy for everyone
+            const arr = await fetchAllConsignments();
             if (!cancelled) setConsignments(arr);
           }
         } else if (tab === 'balances') {
