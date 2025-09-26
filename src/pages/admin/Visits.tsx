@@ -7,7 +7,6 @@ import {
   PencilSquareIcon,
   XMarkIcon,
   TrashIcon,
-  PrinterIcon,
   PlusIcon,
   ClockIcon
 } from '@heroicons/react/24/outline';
@@ -423,72 +422,7 @@ const Visits = () => {
     }
   };
 
-  const exportVisitPdf = (v: Visit) => {
-    const brandLogo = '/IMAGES/Logo.png';
-    const phone = resolvePatientPhone(Number(v.patient));
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const timestamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
-    const safeName = (v.patientName || 'Patient').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
-    const fileTitle = `Visit_${safeName}_ID-${v.patient}_${timestamp}`;
-    const html = `
-      <div class="header">
-        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-          <img src="${brandLogo}" alt="Clinic Logo" style="max-width:48mm; max-height:24mm; object-fit:contain;" />
-          <div class="title" style="font-size:15px;">CitiMed Clinic</div>
-          <div class="muted">Visit Summary #${v.id}</div>
-          <div class="muted">${v.timestamp ? new Date(v.timestamp).toLocaleString() : ''}</div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="row"><div class="label">Patient</div><div class="value">${(v.patientName||'')}</div></div>
-        <div class="row"><div class="label">Patient ID</div><div class="value">${v.patient}</div></div>
-        <div class="row"><div class="label">Phone</div><div class="value">${phone || '—'}</div></div>
-        <div class="row"><div class="label">Diagnosis</div><div class="value">${(v.diagnosis||'—')} (${v.diagnosis_type || '—'})</div></div>
-        <div class="row"><div class="label">Allergies</div><div class="value">${(v.allergies||'—')}</div></div>
-      </div>
-      <div class="hr"></div>
-      <div class="section">
-        <div class="label">Complaints</div>
-        <div class="value">${(v.complaints||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="section">
-        <div class="label">History</div>
-        <div class="value">${(v.history||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="section">
-        <div class="label">Physical Exam</div>
-        <div class="value">${(v.physical_exam||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="section">
-        <div class="label">Lab Test</div>
-        <div class="value">${(v.lab_test||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="section">
-        <div class="label">Lab Results</div>
-        <div class="value">${(v.lab_results||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="section">
-        <div class="label">Imaging</div>
-        <div class="value">${(v.imaging||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="section">
-        <div class="label">Prescription</div>
-        <div class="value">${(v.prescription||'').replace(/</g,'&lt;')}</div>
-      </div>
-      <div class="hr"></div>
-      <div class="section">
-        <div class="row"><div class="label">Charges</div><div class="value">${v.charges ?? '0.00'}</div></div>
-        <div class="row"><div class="label">Paid</div><div class="value">${v.paid ?? '0.00'}</div></div>
-        <div class="row"><div class="label">Balance</div><div class="value">${v.balance ?? '0.00'}</div></div>
-      </div>
-      <div class="hr"></div>
-      <div class="section" style="text-align:center;">
-        <div class="muted">Thank you for choosing CitiMed</div>
-      </div>
-    `;
-    openPrintWindow(fileTitle, html);
-  };
+  // removed exportVisitPdf (print) per request
 
   // removed unused exportAllVisitsPdf
 
@@ -507,13 +441,23 @@ const Visits = () => {
         if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/patients/all-patients/`);
         const data = await res.json().catch(() => ({}));
         const rows: any[] = Array.isArray(data?.Patients) ? data.Patients : [];
-        const mapped: PatientShort[] = rows.map(p => ({
-          id: String(p?.id ?? ''),
-          fullName: `${p?.first_name ?? ''} ${p?.last_name ?? ''}`.trim() || `Patient #${p?.id ?? ''}`,
-          phone: p?.phone_no ?? '',
-          patientNumber: p?.patient_number ?? (p?.id ? `CIT-${new Date().getFullYear()}-${String(p.id).padStart(3,'0')}` : undefined),
-          type: p?.patient_type,
-        }));
+        const mapped: PatientShort[] = rows.map(p => {
+          const idStr = String(p?.id ?? '');
+          const first = p?.first_name ?? p?.firstName ?? '';
+          const last = p?.last_name ?? p?.lastName ?? '';
+          const nameFromPair = `${first} ${last}`.trim();
+          const nameSingle = p?.name ?? p?.full_name ?? p?.fullName ?? '';
+          const fallback = nameFromPair || nameSingle || (p?.email ? String(p.email).split('@')[0] : '') || `Patient #${p?.id ?? ''}`;
+          const phone = p?.phone_no ?? p?.phone ?? p?.phoneNumber ?? '';
+          const patNum = p?.patient_number ?? p?.patientNumber ?? (p?.id ? `CIT-${new Date().getFullYear()}-${String(p.id).padStart(3,'0')}` : undefined);
+          return {
+            id: idStr,
+            fullName: fallback,
+            phone,
+            patientNumber: patNum,
+            type: p?.patient_type ?? p?.type,
+          } as PatientShort;
+        });
         setPatients(mapped);
       } catch (_) {
         // ignore for now; visits can still function
@@ -533,6 +477,15 @@ const Visits = () => {
       return (isGeneric || v.patientName !== resolved) ? { ...v, patientName: resolved } : v;
     }));
   }, [patients]);
+
+  // Also reconcile currently selected visit's patient name when patients list is available
+  useEffect(() => {
+    if (!selectedVisit || !patients || patients.length === 0) return;
+    const resolved = resolvePatientName(Number(selectedVisit.patient));
+    if (resolved && (selectedVisit.patientName !== resolved)) {
+      setSelectedVisit({ ...selectedVisit, patientName: resolved });
+    }
+  }, [patients, selectedVisit]);
 
   // Keep URL in sync with Add Visit form for better back-button UX
   useEffect(() => {
@@ -809,11 +762,8 @@ const Visits = () => {
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.balance ?? '0.00'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setSelectedVisit(v)} className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
+                          <button onClick={() => setSelectedVisit({ ...v, patientName: resolvePatientName(Number(v.patient)) || v.patientName })} className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
                             <EyeIcon className="h-4 w-4" /> View
-                          </button>
-                          <button onClick={() => exportVisitPdf(v)} className="px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800 flex items-center gap-1">
-                            <PrinterIcon className="h-4 w-4" /> Print
                           </button>
                           <button onClick={() => openEdit(v)} className="px-2 py-1 rounded-md bg-green-600 hover:bg-green-700 text-white flex items-center gap-1">
                             <PencilSquareIcon className="h-4 w-4" /> Edit
@@ -1260,7 +1210,8 @@ const Visits = () => {
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border border-gray-100 p-4">
                   <h4 className="text-sm font-medium text-gray-900 mb-2">Patient</h4>
-                  <p className="text-sm text-gray-700">{selectedVisit.patientName || '—'}</p>
+                  <p className="text-sm text-gray-700">{selectedVisit.patientName || (selectedVisit.patient ? `Patient #${selectedVisit.patient}` : '—')}</p>
+                  <p className="text-xs text-gray-500">Patient ID: {selectedVisit.patient}</p>
                   <p className="text-xs text-gray-500">Client ID: {selectedVisit.patientNumber || '—'}</p>
                   {selectedVisit.timestamp && (
                     <p className="text-xs text-gray-500 mt-1">Date: {new Date(selectedVisit.timestamp).toLocaleString()}</p>

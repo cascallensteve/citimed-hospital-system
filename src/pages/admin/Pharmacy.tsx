@@ -52,7 +52,7 @@ interface Sale {
 const Pharmacy = () => {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'low-stock'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'low-stock' | 'consignments'>('inventory');
   const [showAddItemForm, setShowAddItemForm] = useState(false);
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [showViewItem, setShowViewItem] = useState(false);
@@ -139,7 +139,25 @@ const Pharmacy = () => {
     return res;
   };
 
-  
+  // Robust consignments loader (tries both URL variants)
+  const loadConsignments = async () => {
+    try {
+      const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+      const urls = [
+        `${base}/pharmacy/consignments`,
+        `${base}/pharmacy/consignments/`,
+      ];
+      for (const u of urls) {
+        try {
+          const res = await authFetch(u, { method: 'GET' });
+          const data = await res.json().catch(() => ({} as any));
+          const arr: any[] = Array.isArray(data?.inventories) ? data.inventories : [];
+          if (res.ok) { setConsignments(arr); return; }
+        } catch { /* try next */ }
+      }
+      setConsignments([]);
+    } catch { setConsignments([]); }
+  };
 
   const lowStockItems = items.filter(item => item.quantity < 4);
 
@@ -193,21 +211,8 @@ const Pharmacy = () => {
     fetchItems();
   }, []);
 
-  // Fetch all consignments
-  useEffect(() => {
-    const fetchConsignments = async () => {
-      try {
-        const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
-        const res = await authFetch(`${base}/pharmacy/consignments`, { method: 'GET' });
-        const data = await res.json().catch(() => ({} as any));
-        const arr: any[] = Array.isArray(data?.inventories) ? data.inventories : [];
-        setConsignments(arr);
-      } catch {
-        // ignore
-      }
-    };
-    fetchConsignments();
-  }, []);
+  // Fetch all consignments on mount
+  useEffect(() => { loadConsignments(); }, []);
 
   const openSaleDetail = async (saleId: number) => {
     try {
@@ -255,9 +260,48 @@ const Pharmacy = () => {
     URL.revokeObjectURL(url);
   };
 
-  const downloadSaleJSON = () => {
+  const printSalePDF = () => {
     if (!saleDetail) return;
-    downloadBlob(JSON.stringify(saleDetail, null, 2), `sale-${saleDetail.id}.json`, 'application/json');
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const rows = (saleDetail.items || []).map((l, i) => `
+      <tr>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${l.item_name || `#${l.item}`}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${l.amount}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${l.total_price}</td>
+      </tr>
+    `).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>Sale ${saleDetail.id}</title>
+      <style>
+        body{font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:16px; color:#111827}
+        .header{ text-align:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #e5e7eb }
+        .title{ font-size:18px; font-weight:700 }
+        table{ width:100%; border-collapse:collapse; font-size:12px }
+        th,td{ text-align:left; padding:6px; border-bottom:1px solid #e5e7eb }
+        th{ background:#f9fafb; font-weight:700 }
+      </style>
+    </head><body>
+      <div class="header">
+        <div class="title">Sale #${saleDetail.id}</div>
+        <div>${saleDetail.timestamp ? new Date(saleDetail.timestamp).toLocaleString() : ''}</div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div><b>Customer:</b> ${saleDetail.customer_name || 'Walk-in'}</div>
+        <div><b>Total:</b> ${saleDetail.total_amount}</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Item</th><th>Amount</th><th>Total Price</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 300);}</script>
+    </body></html>`;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   };
 
   const downloadSaleCSV = () => {
@@ -553,6 +597,46 @@ const Pharmacy = () => {
     return salesFilteredBySearch.filter(s => s.timestamp && new Date(s.timestamp) >= startOfWeek && new Date(s.timestamp) <= now);
   })();
 
+  // Print only the Sales table (not the whole page)
+  const printSalesList = () => {
+    const rows = salesDisplayed.map((s, i) => `
+      <tr>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).customerName}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).itemCount}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).totalAmount}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).timestamp ? new Date((s as any).timestamp).toLocaleString() : '-'}</td>
+      </tr>
+    `).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>Pharmacy Sales</title>
+      <style>
+        body{font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:16px; color:#111827}
+        .header{ text-align:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #e5e7eb }
+        .title{ font-size:18px; font-weight:700 }
+        table{ width:100%; border-collapse:collapse; font-size:12px }
+        th,td{ text-align:left; padding:6px; border-bottom:1px solid #e5e7eb }
+        th{ background:#f9fafb; font-weight:700 }
+      </style>
+    </head><body>
+      <div class="header">
+        <div class="title">Pharmacy Sales</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Customer</th><th>Items</th><th>Total</th><th>Date</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 300);}</script>
+    </body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
   const getStockStatusColor = (item: PharmacyItem) => {
     if (item.quantity < 4) {
       return 'text-red-600';
@@ -678,7 +762,7 @@ const Pharmacy = () => {
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <button onClick={downloadSaleCSV} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Download CSV</button>
-              <button onClick={downloadSaleJSON} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded">Download JSON</button>
+              <button onClick={printSalePDF} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded">Download PDF</button>
             </div>
           </div>
         </div>
@@ -735,7 +819,7 @@ const Pharmacy = () => {
                     <option value="week">This Week</option>
                     <option value="today">Today</option>
                   </select>
-                  <button onClick={() => window.print()} className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Print Sales</button>
+                  <button onClick={printSalesList} className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Print Sales</button>
                 </>
               )}
             </div>
@@ -791,42 +875,37 @@ const Pharmacy = () => {
           {/* Consignments Tab */}
           {activeTab === 'consignments' && (
             <div className="overflow-x-auto">
+              {consignments.length === 0 ? (
+                <div className="p-6 text-sm text-gray-600 flex items-center justify-between">
+                  <span>No consignments found. Ensure you have added stock (consignments) and you are authenticated.</span>
+                  <button onClick={loadConsignments} className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded">Retry</button>
+                </div>
+              ) : (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch/Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purchased</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {consignments.map((c, idx) => (
                     <tr key={c.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.item_name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.item_name || (c.item_details?.name) || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.quantity}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.unit_name || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.supplier_name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatKES(Number(c.purchase_cost || 0))}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(c.payment_type || '').toString().toUpperCase()}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.purchase_date ? new Date(c.purchase_date).toLocaleDateString() : '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.expiry_date ? new Date(c.expiry_date).toLocaleDateString() : '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onClick={() => openConsignmentDetail(Number(c.id))} className="text-purple-700 hover:text-purple-900">View</button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
           )}
           {/* Inventory Tab */}
@@ -929,7 +1008,14 @@ const Pharmacy = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatKES(s.totalAmount)}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{s.timestamp ? new Date(s.timestamp).toLocaleString() : '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onClick={() => openSaleDetail(Number(s.id))} className="text-blue-600 hover:text-blue-900">View</button>
+                        <button
+                          onClick={() => openSaleDetail(Number(s.id))}
+                          className="inline-flex items-center justify-center rounded-full bg-green-600 hover:bg-green-700 p-2"
+                          aria-label="View sale"
+                          title="View"
+                        >
+                          <EyeIcon className="h-4 w-4 text-white" />
+                        </button>
                       </td>
                     </tr>
                   ))}

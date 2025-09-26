@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
-  ArrowLeftOnRectangleIcon as LogoutIcon, 
   Bars3Icon as MenuAlt2Icon, 
   XMarkIcon as XIcon,
   UserGroupIcon, 
@@ -19,7 +18,7 @@ import {
 type NavItem = { name: string; to: string; icon: any };
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -287,7 +286,6 @@ const Dashboard = () => {
         { name: 'Patients', to: '/dashboard/admin/patients', icon: UserGroupIcon },
         { name: 'Visits', to: '/dashboard/admin/visits', icon: CalendarDaysIcon },
         { name: 'Pharmacy', to: '/dashboard/admin/pharmacy', icon: ShoppingCartIcon },
-        { name: 'Finance', to: '/dashboard/admin/finance', icon: CurrencyDollarIcon },
         { name: 'Reports', to: '/dashboard/super/reports', icon: DocumentTextIcon },
         { name: 'Settings', to: '/dashboard/settings', icon: Cog6ToothIcon },
       ];
@@ -389,12 +387,6 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </Link>
-                <button
-                  onClick={logout}
-                  className="ml-2 p-2 rounded-lg text-blue-200 hover:bg-blue-700 hover:text-white transition-colors duration-300"
-                >
-                  <LogoutIcon className="h-5 w-5" />
-                </button>
               </div>
               {/* Mobile Profile Panel removed: now navigate to Profile page */}
             </div>
@@ -460,12 +452,6 @@ const Dashboard = () => {
                   </div>
                 </div>
                 </Link>
-                  <button
-                    onClick={logout}
-                  className="ml-2 p-2 rounded-lg text-blue-200 hover:bg-blue-700 hover:text-white transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                  <LogoutIcon className="h-5 w-5" />
-                  </button>
               </div>
               {/* Profile Panel removed: now navigate to Profile page */}
             </div>
