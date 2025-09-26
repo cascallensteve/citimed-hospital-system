@@ -135,18 +135,18 @@ const Profile = () => {
     }
   };
 
-  // Helper: fetch with Authorization, try Bearer then Token if unauthorized
+  // Helper: fetch with Authorization; robustly try both Token and Bearer schemes
   const fetchWithAuth = async (url: string, signal?: AbortSignal) => {
     const token = localStorage.getItem('token') || '';
-    const doFetch = (scheme: 'Bearer' | 'Token') => fetch(url, {
+    const doFetch = (scheme: 'Token' | 'Bearer') => fetch(url, {
       headers: token ? { Authorization: `${scheme} ${token}` } : {},
       signal,
     });
-    // First try Bearer
-    let res = await doFetch('Bearer');
-    if (res.status === 401) {
-      // Retry with Token
-      res = await doFetch('Token');
+    // Many endpoints in this backend prefer Token scheme; try it first
+    let res = await doFetch('Token');
+    // On common auth failures, retry with Bearer (JWT style)
+    if (!res.ok && (res.status === 401 || res.status === 403)) {
+      res = await doFetch('Bearer');
     }
     return res;
   };
