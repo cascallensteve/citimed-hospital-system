@@ -82,7 +82,7 @@ const Reports = () => {
   const [exporting, setExporting] = useState<boolean>(false);
 
   // Tabbed, paginated data viewers
-  type TabKey = 'visits' | 'sales' | 'consignments';
+  type TabKey = 'visits' | 'sales' | 'consignments' | 'balances';
   const [tab, setTab] = useState<TabKey>('visits');
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
@@ -91,6 +91,8 @@ const Reports = () => {
   const [visits, setVisits] = useState<any[]>([]);
   const [sales, setSales] = useState<PharmacySale[]>([]);
   const [consignments, setConsignments] = useState<ConsignmentInventory[]>([]);
+  const [balanceVisits, setBalanceVisits] = useState<any[]>([]);
+  const [totalPendingBalance, setTotalPendingBalance] = useState<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const { user } = useAuth();
 
@@ -217,12 +219,29 @@ const Reports = () => {
         } else if (tab === 'consignments') {
           if (hasRange && from && to) {
             const { consignments } = await api.finance.consignmentsByDate({ start_date: from, end_date: to });
-            const arr = Array.isArray(consignments) ? consignments : [];
+            let arr = Array.isArray(consignments) ? consignments : [];
+            // Fallback: if API returns empty (or permission blocked), try allConsignments and filter client-side
+            if (arr.length === 0) {
+              const { inventories } = await api.pharmacy.allConsignments();
+              const allArr = Array.isArray(inventories) ? inventories : [];
+              arr = allArr.filter((c: any) => {
+                const ts = c?.timestamp || c?.purchase_date;
+                return inRange(ts);
+              });
+            }
             if (!cancelled) setConsignments(arr as any);
           } else {
             const { inventories } = await api.pharmacy.allConsignments();
             const arr = Array.isArray(inventories) ? inventories : [];
             if (!cancelled) setConsignments(arr);
+          }
+        } else if (tab === 'balances') {
+          // Fetch all balances; endpoint returns total_pending_balance and a list of visits with balances
+          const { total_pending_balance, visits } = await api.finance.visitsBalances();
+          const arr = Array.isArray(visits) ? visits : [];
+          if (!cancelled) {
+            setBalanceVisits(arr);
+            setTotalPendingBalance(Number(total_pending_balance || 0));
           }
         }
         // Reset to first page whenever tab changes
@@ -363,13 +382,50 @@ const Reports = () => {
     }
   }, [filteredConsignments]);
 
-  const activeRows = tab === 'visits' ? filteredVisits : tab === 'sales' ? filteredSales : filteredConsignments;
+  const filteredBalances = useMemo(() => {
+    const arr = Array.isArray(balanceVisits) ? balanceVisits : [];
+    const rows = arr.filter(v => inRange(v?.timestamp)).map(v => {
+      const idNum = Number((v?.patient ?? '').toString());
+      const resolvedName = patientsMap[idNum] || `Patient #${idNum || ''}`;
+      const clientId = (v?.patient_number || v?.client_id || v?.patientId || idNum || '').toString();
+      return {
+        id: String(v?.id ?? ''),
+        patient_name: resolvedName,
+        client_id: clientId,
+        timestamp: v?.timestamp || '',
+        charges: v?.charges ?? '',
+        paid: v?.total_paid ?? 0,
+        balance: v?.balance ?? 0,
+        diagnosis: v?.diagnosis ?? '',
+        diagnosis_type: v?.diagnosis_type ?? '',
+        prescription: v?.prescription ?? '',
+        complaints: v?.complaints ?? '',
+        history: v?.history ?? '',
+        allergies: v?.allergies ?? '',
+        physical_exam: v?.physical_exam ?? '',
+        lab_test: v?.lab_test ?? '',
+        lab_results: v?.lab_results ?? '',
+        imaging: v?.imaging ?? '',
+        transactions: Array.isArray(v?.transactions) ? v.transactions : [],
+      };
+    });
+    return rows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [balanceVisits, patientsMap, from, to]);
+
+  const activeRows =
+    tab === 'visits' ? filteredVisits :
+    tab === 'sales' ? filteredSales :
+    tab === 'consignments' ? filteredConsignments :
+    filteredBalances;
   const totalPages = Math.max(1, Math.ceil((activeRows.length || 0) / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageRows = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return activeRows.slice(start, start + pageSize);
   }, [activeRows, currentPage, pageSize]);
+
+  // Balance detail modal state
+  const [selectedBalance, setSelectedBalance] = useState<any | null>(null);
 
   // --- Export helpers (client-side) ---
   const openPrintWindow = (title: string, contentHtml: string) => {
@@ -479,6 +535,36 @@ const Reports = () => {
     const totalNote = (tab === 'sales') ? `<div style="margin:8px 0; font-weight:600;">Total Sales: ${salesTotal.toFixed(2)}</div>` : '';
     const table = `<div class=\"header\"><div class=\"title\">${title}</div><div>${from && to ? `${from} → ${to}` : from ? `From ${from}` : to ? `Until ${to}` : 'All time'}</div>${totalNote}</div><table>${thead}<tbody>${bodyRows}</tbody></table>`;
     openPrintWindow(title, table);
+  };
+
+  // Print a single balance row (patient) as PDF/printable receipt
+  const exportBalancePdf = (row: {
+    id: string;
+    patient_name: string;
+    client_id?: string;
+    timestamp?: string;
+    charges?: string | number;
+    paid?: string | number;
+    balance?: string | number;
+  }) => {
+    const title = `Patient Balance - ${row.patient_name}`;
+    const content = `
+      <div class="header">
+        <div class="title">Patient Balance</div>
+        <div>${row.timestamp ? new Date(row.timestamp).toLocaleString() : ''}</div>
+      </div>
+      <table>
+        <tbody>
+          <tr><th>Patient</th><td>${row.patient_name || '—'}</td></tr>
+          <tr><th>Client ID</th><td>${row.client_id || '—'}</td></tr>
+          <tr><th>Charges</th><td>${row.charges ?? '0.00'}</td></tr>
+          <tr><th>Paid</th><td>${row.paid ?? '0.00'}</td></tr>
+          <tr><th>Balance</th><td>${row.balance ?? '0.00'}</td></tr>
+          <tr><th>Items (Prescription)</th><td>${(row as any).prescription || '—'}</td></tr>
+        </tbody>
+      </table>
+    `;
+    openPrintWindow(title, content);
   };
 
   // Export functionality not available on backend; hide for now
@@ -658,6 +744,21 @@ const Reports = () => {
               <p className="text-2xl font-semibold text-gray-900">{filteredConsignments.length}</p>
             </div>
           </div>
+        ) : tab === 'balances' ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="border rounded-lg p-4">
+              <p className="text-sm text-gray-500">Total Pending Balance</p>
+              <p className="text-2xl font-semibold text-gray-900">{totalPendingBalance.toFixed ? totalPendingBalance.toFixed(2) : Number(totalPendingBalance || 0).toFixed(2)}</p>
+            </div>
+            <div className="border rounded-lg p-4">
+              <p className="text-sm text-gray-500">Visits With Balance</p>
+              <p className="text-2xl font-semibold text-gray-900">{filteredBalances.length}</p>
+            </div>
+            <div className="border rounded-lg p-4">
+              <p className="text-sm text-gray-500">In Range</p>
+              <p className="text-2xl font-semibold text-gray-900">{from && to ? `${from} → ${to}` : from ? `From ${from}` : to ? `Until ${to}` : 'All time'}</p>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="border rounded-lg p-4">
@@ -697,6 +798,12 @@ const Reports = () => {
               onClick={() => setTab('consignments')}
             >
               Consignments
+            </button>
+            <button
+              className={`px-3 py-1.5 rounded-md text-sm ${tab === 'balances' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+              onClick={() => setTab('balances')}
+            >
+              Balances
             </button>
           </div>
           <div className="flex items-center gap-2 text-sm">
@@ -820,9 +927,54 @@ const Reports = () => {
                 </tbody>
               </table>
             )}
+
+            {tab === 'balances' && (
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="py-2 pr-4">S/N</th>
+                    <th className="py-2 pr-4">Patient</th>
+                    <th className="py-2 pr-4">Client ID</th>
+                    <th className="py-2 pr-4">Date</th>
+                    <th className="py-2 pr-4">Charges</th>
+                    <th className="py-2 pr-4">Paid</th>
+                    <th className="py-2 pr-4">Balance</th>
+                    <th className="py-2 pr-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((v: any, idx: number) => {
+                    const sn = (currentPage - 1) * pageSize + idx + 1;
+                    return (
+                      <tr key={v.id} className="border-b last:border-0">
+                        <td className="py-2 pr-4">{sn}</td>
+                        <td className="py-2 pr-4">{v.patient_name}</td>
+                        <td className="py-2 pr-4 font-mono">{v.client_id || '—'}</td>
+                        <td className="py-2 pr-4">{v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
+                        <td className="py-2 pr-4">{v.charges ?? '0.00'}</td>
+                        <td className="py-2 pr-4">{v.paid ?? '0.00'}</td>
+                        <td className="py-2 pr-4">{v.balance ?? '0.00'}</td>
+                        <td className="py-2 pr-4">
+                          <button
+                            onClick={() => exportBalancePdf(v)}
+                            className="px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            Print
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-4 text-gray-500 text-center">No data to display</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
-
         {/* Pager */}
         <div className="flex items-center justify-between mt-4 text-sm">
           <div className="text-gray-600">Page {currentPage} of {totalPages} • {activeRows.length} rows</div>
