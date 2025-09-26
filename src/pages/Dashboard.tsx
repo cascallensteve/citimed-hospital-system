@@ -56,10 +56,13 @@ const Dashboard = () => {
   const [patientsTotal, setPatientsTotal] = useState<number | null>(null);
   const [patientsNewToday, setPatientsNewToday] = useState<number>(0);
   const [pharmacyItemsCount, setPharmacyItemsCount] = useState<number>(0);
+  const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [visitsToday, setVisitsToday] = useState<number>(0);
   const [visitsThisWeek, setVisitsThisWeek] = useState<number>(0);
   const [revenueToday, setRevenueToday] = useState<number>(0);
   const [outstandingBalance, setOutstandingBalance] = useState<number>(0);
+  const [transactionsToday, setTransactionsToday] = useState<number>(0);
+  const [totalSalesCount, setTotalSalesCount] = useState<number>(0);
 
   const dashboardData = {
     patients: {
@@ -133,6 +136,11 @@ const Dashboard = () => {
         if (!aborted) {
           const items: any[] = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.data) ? data.data : []);
           setPharmacyItemsCount(items.length || 0);
+          // Compute low stock threshold (<= 5 units) for counter admins overview
+          try {
+            const low = items.filter((it: any) => Number(it?.quantity ?? 0) <= 5).length;
+            setLowStockCount(low);
+          } catch { setLowStockCount(0); }
         }
       } catch {/* ignore */}
     };
@@ -140,7 +148,7 @@ const Dashboard = () => {
     return () => { aborted = true; };
   }, []);
 
-  // Fetch visits for today/this week and compute revenue/outstanding
+  // Fetch visits for today/this week and compute revenue/outstanding (for superadmin/outdoor)
   useEffect(() => {
     let aborted = false;
     const fetchVisits = async () => {
@@ -181,14 +189,69 @@ const Dashboard = () => {
           });
           setVisitsToday(todayCount);
           setVisitsThisWeek(weekCount);
-          setRevenueToday(todayRevenue);
+          setRevenueToday(prev => (user?.permission === 'over-the-counter' ? prev : todayRevenue));
           setOutstandingBalance(outstanding);
         }
       } catch {/* ignore */}
     };
-    fetchVisits();
+    if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
+      fetchVisits();
+    }
     return () => { aborted = true; };
-  }, []);
+  }, [user?.role, user?.permission]);
+
+  // For over-the-counter admins: fetch today's pharmacy sales to populate revenueToday and transactionsToday
+  useEffect(() => {
+    let aborted = false;
+    const fetchSalesToday = async () => {
+      try {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const isoDay = `${yyyy}-${mm}-${dd}`;
+        // Use finance endpoint for aggregated totals
+        const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+        const res = await fetch(`${base}/finances/pharmacy-sales-by-day`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('token') ? { Authorization: `Token ${localStorage.getItem('token')}` } : {}) },
+          body: JSON.stringify({ date: isoDay })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!aborted && res.ok) {
+          const total = Number(data?.total_sum || 0);
+          const salesArr: any[] = Array.isArray(data?.sales) ? data.sales : [];
+          setRevenueToday(total);
+          setTransactionsToday(salesArr.length);
+        }
+      } catch {/* ignore */}
+    };
+    if (user?.permission === 'over-the-counter') {
+      fetchSalesToday();
+    }
+    return () => { aborted = true; };
+  }, [user?.permission]);
+
+  // For over-the-counter admins: fetch total sales count (all time)
+  useEffect(() => {
+    let aborted = false;
+    const fetchTotalSales = async () => {
+      try {
+        const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${base}/pharmacy/all-sales`, { headers: token ? { Authorization: `Token ${token}` } : {} });
+        const data = await res.json().catch(() => ({}));
+        if (!aborted) {
+          const arr: any[] = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.sales) ? data.sales : []);
+          setTotalSalesCount(arr.length || 0);
+        }
+      } catch {/* ignore */}
+    };
+    if (user?.permission === 'over-the-counter') {
+      fetchTotalSales();
+    }
+    return () => { aborted = true; };
+  }, [user?.permission]);
 
   // Currency formatter KES
   const formatKES = (value: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(value || 0);
@@ -242,8 +305,6 @@ const Dashboard = () => {
       return [
         { name: 'Overview', to: '/dashboard', icon: HomeIcon },
         { name: 'Pharmacy', to: '/dashboard/admin/pharmacy', icon: ShoppingCartIcon },
-        { name: 'Finance', to: '/dashboard/admin/finance', icon: CurrencyDollarIcon },
-        { name: 'Reports', to: '/dashboard/admin/reports', icon: DocumentTextIcon },
         { name: 'Settings', to: '/dashboard/settings', icon: Cog6ToothIcon },
       ];
     }
@@ -565,36 +626,87 @@ const Dashboard = () => {
                     </div>
                   </div>
                 )}
+
+                {user?.permission === 'over-the-counter' && (
+                  <>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                      <div className="flex items-center">
+                        <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                          <CurrencyDollarIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Revenue Today (Pharmacy)</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(revenueToday)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                      <div className="flex items-center">
+                        <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                          <ShoppingCartIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Transactions Today</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white">{transactionsToday}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                      <div className="flex items-center">
+                        <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
+                          <ShoppingCartIcon className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Total Sales (All Time)</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white">{totalSalesCount}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                      <div className="flex items-center">
+                        <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
+                          <ShoppingCartIcon className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        </div>
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Low Stock Items (≤5)</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white">{lowStockCount}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
-              {/* Analytics Summary */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Analytics Summary</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                    <div className="text-sm text-gray-600 dark:text-gray-300">New Patients Today</div>
-                    <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.patients.new}</div>
-                    <div className="mt-2 text-xs text-green-600">+12% vs yesterday</div>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                    <div className="text-sm text-gray-600 dark:text-gray-300">Visits This Week</div>
-                    <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.visits.thisWeek}</div>
-                    <div className="mt-2 text-xs text-blue-600">On track</div>
-                  </div>
-                  {(user?.role === 'superadmin' || user?.permission === 'over-the-counter') && (
+              {/* Analytics Summary (hidden for over-the-counter admins) */}
+              {user?.permission !== 'over-the-counter' && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Analytics Summary</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-300">Revenue Today</div>
-                      <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.today)}</div>
-                      <div className="mt-2 text-xs text-green-600">Paid inflow</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-300">New Patients Today</div>
+                      <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.patients.new}</div>
+                      <div className="mt-2 text-xs text-green-600">+12% vs yesterday</div>
                     </div>
-                  )}
-                  <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                    <div className="text-sm text-gray-600 dark:text-gray-300">Outstanding Balance</div>
-                    <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.outstanding)}</div>
-                    <div className="mt-2 text-xs text-orange-600">Follow-ups needed</div>
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-300">Visits This Week</div>
+                      <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.visits.thisWeek}</div>
+                      <div className="mt-2 text-xs text-blue-600">On track</div>
+                    </div>
+                    {(user?.role === 'superadmin') && (
+                      <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                        <div className="text-sm text-gray-600 dark:text-gray-300">Revenue Today</div>
+                        <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.today)}</div>
+                        <div className="mt-2 text-xs text-green-600">Paid inflow</div>
+                      </div>
+                    )}
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-300">Outstanding Balance</div>
+                      <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.outstanding)}</div>
+                      <div className="mt-2 text-xs text-orange-600">Follow-ups needed</div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : (
           <Outlet />
