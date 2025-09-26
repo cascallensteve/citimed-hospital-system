@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { 
   MagnifyingGlassIcon, 
-  UserIcon,
-  CalendarDaysIcon,
   DocumentTextIcon,
   EyeIcon,
   PencilSquareIcon,
@@ -51,7 +49,7 @@ const Visits = () => {
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [loading, setLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteVisit, setConfirmDeleteVisit] = useState<Visit | null>(null);
   // Edit state
@@ -66,6 +64,8 @@ const Visits = () => {
   // Sorting
   const [sortBy, setSortBy] = useState<'name' | 'date'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // Tabs: default to Patients, then Visit Details
+  const [activeTab, setActiveTab] = useState<'visits' | 'patients'>('patients');
 
   const [visits, setVisits] = useState<Visit[]>([]);
   const { user } = useAuth();
@@ -166,14 +166,7 @@ const Visits = () => {
     return isFinite(n) ? n : 0;
   };
 
-  const getPaymentStatus = (v: Visit) => {
-    const charges = moneyToNumber(v.charges);
-    const paid = moneyToNumber(v.paid);
-    if (charges <= 0 && paid <= 0) return { label: 'No Charges', color: 'bg-gray-100 text-gray-700' };
-    if (paid <= 0) return { label: 'Unpaid', color: 'bg-red-100 text-red-700' };
-    if (paid > 0 && paid < charges) return { label: 'Partially Paid', color: 'bg-yellow-100 text-yellow-800' };
-    return { label: 'Paid', color: 'bg-green-100 text-green-700' };
-  };
+  // removed unused getPaymentStatus
 
   // Record a payment for the newly created visit
   const addPayment = async () => {
@@ -190,8 +183,8 @@ const Visits = () => {
         amount: num.toFixed(2),
         payment_type: (paymentType || 'cash').toLowerCase(),
       };
-      let res = await authFetch(`${base}/finances/add-payment/${paymentVisit.id}/`, { method: 'POST', body: JSON.stringify(body) });
-      if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/finances/add-payment/${paymentVisit.id}/`, { method: 'POST', body: JSON.stringify(body) });
+      let res = await authFetch(`${base}/visits/add-payment/${paymentVisit.id}/`, { method: 'POST', body: JSON.stringify(body) });
+      if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/visits/add-payment/${paymentVisit.id}/`, { method: 'POST', body: JSON.stringify(body) });
       const data = await res.json().catch(async () => ({ raw: cleanErrorText(await res.text().catch(()=> '')) }));
       if (!res.ok) {
         const rawMsg = (data && (data.message || data.error || data.detail || (data as any).raw)) || '';
@@ -497,37 +490,7 @@ const Visits = () => {
     openPrintWindow(fileTitle, html);
   };
 
-  const exportAllVisitsPdf = () => {
-    if (!sortedVisits.length) { toast.error('No visits to export'); return; }
-    const rows = sortedVisits.map(v => `
-      <tr>
-        <td><strong>${v.patientName || ''}</strong><div class="muted" style="font-size:10px;">ID: ${v.patientNumber || '—'}</div></td>
-        <td>${v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
-        <td>${(v.diagnosis||'').replace(/</g,'&lt;')}</td>
-        <td>${v.charges ?? '0.00'}</td>
-        <td>${v.paid ?? '0.00'}</td>
-        <td>${v.balance ?? '0.00'}</td>
-      </tr>
-    `).join('');
-    const brandLogo = '/IMAGES/Logo.png';
-    const html = `
-      <div class="header">
-        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-          <img src="${brandLogo}" alt="Clinic Logo" style="max-width:48mm; max-height:24mm; object-fit:contain;" />
-          <div class="title" style="font-size:15px;">CitiMed Clinic</div>
-          <div class="muted">Visits Report</div>
-          <div class="muted">Generated ${new Date().toLocaleString()}</div>
-        </div>
-      </div>
-      <table>
-        <thead><tr>
-          <th>Patient</th><th>Client ID</th><th>Date</th><th>Diagnosis</th><th>Charges</th><th>Paid</th><th>Balance</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `;
-    openPrintWindow('Visits Report', html);
-  };
+  // removed unused exportAllVisitsPdf
 
   // Load all visits on mount
   useEffect(() => {
@@ -760,6 +723,190 @@ const Visits = () => {
             </div>
           </div>
           <div className="relative h-2 bg-gradient-to-r from-blue-500/60 via-indigo-500/60 to-purple-500/60" />
+        </div>
+      )}
+
+      {/* Tabs for browsing */}
+      {!showVisitForm && (
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm ${activeTab === 'patients' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                onClick={() => setActiveTab('patients')}
+              >
+                Patients
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm ${activeTab === 'visits' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                onClick={() => setActiveTab('visits')}
+              >
+                Visit Details
+              </button>
+            </div>
+            {activeTab === 'visits' && (
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={searchTerm}
+                    onChange={(e)=>setSearchTerm(e.target.value)}
+                    placeholder="Search visits"
+                    className="w-56 pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <select
+                  className="border rounded-md px-2 py-1 text-sm"
+                  value={`${sortBy}:${sortDir}`}
+                  onChange={(e)=>{
+                    const [sb, sd] = e.target.value.split(':') as any;
+                    setSortBy(sb);
+                    setSortDir(sd);
+                  }}
+                >
+                  <option value="date:desc">Newest</option>
+                  <option value="date:asc">Oldest</option>
+                  <option value="name:asc">Name A→Z</option>
+                  <option value="name:desc">Name Z→A</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab content: Visit Details list */}
+      {!showVisitForm && activeTab === 'visits' && (
+        <div id="recent-visits" className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900">Visit Details</h3>
+            <div className="text-sm text-gray-600">Page {currentPage} of {totalPages} • {sortedVisits.length} rows</div>
+          </div>
+          <div className="overflow-x-auto">
+            {loading ? (
+              <div className="p-8 text-center text-sm text-gray-500">Loading visits…</div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Diagnosis</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Charges</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paginatedVisits.map(v => (
+                    <tr key={v.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-900">{v.patientName}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.diagnosis || '—'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.charges ?? '0.00'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.paid ?? '0.00'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.balance ?? '0.00'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setSelectedVisit(v)} className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
+                            <EyeIcon className="h-4 w-4" /> View
+                          </button>
+                          <button onClick={() => exportVisitPdf(v)} className="px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800 flex items-center gap-1">
+                            <PrinterIcon className="h-4 w-4" /> Print
+                          </button>
+                          <button onClick={() => openEdit(v)} className="px-2 py-1 rounded-md bg-green-600 hover:bg-green-700 text-white flex items-center gap-1">
+                            <PencilSquareIcon className="h-4 w-4" /> Edit
+                          </button>
+                          <button onClick={() => openDeleteConfirm(v)} className="px-2 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white flex items-center gap-1">
+                            <TrashIcon className="h-4 w-4" /> Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!loading && paginatedVisits.length === 0) && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">No visits found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+          {/* Pager */}
+          <div className="flex items-center justify-between px-6 py-3 border-t text-sm">
+            <div className="text-gray-600">Page {currentPage} of {totalPages}</div>
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+              >
+                Previous
+              </button>
+              <button
+                className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab content: Patients list */}
+      {!showVisitForm && activeTab === 'patients' && (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">Patients</h3>
+          </div>
+          <div className="overflow-x-auto">
+            {patientsLoading ? (
+              <div className="p-8 text-center text-sm text-gray-500">Loading patients…</div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {patients
+                    .slice()
+                    .sort((a,b) => Number(b.id) - Number(a.id))
+                    .map(p => (
+                      <tr key={p.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{p.fullName}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><span className="font-mono">{p.patientNumber || '—'}</span></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{p.phone || '—'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => {
+                              setSelectedPatient({ id: String(p.id), fullName: p.fullName, phone: p.phone, patientNumber: p.patientNumber, type: p.type });
+                              setPatientSearch(`${p.fullName} (${p.patientNumber || p.id})`);
+                              setCurrentVisit(cv => ({ ...cv, patient: Number(p.id) }));
+                              setShowVisitForm(true);
+                              const url = new URL(window.location.href);
+                              url.searchParams.set('add', '1');
+                              window.history.pushState({}, '', url.toString());
+                            }}
+                            className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            Add Visit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
