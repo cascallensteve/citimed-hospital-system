@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import api, { type PharmacySale, type ConsignmentInventory } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -95,6 +96,12 @@ const Reports = () => {
   const [totalPendingBalance, setTotalPendingBalance] = useState<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const { user } = useAuth();
+
+  // Permission guard: Outdoor Admins should not access Reports
+  const perm = (user as any)?.permission as 'out-door-patient' | 'over-the-counter' | undefined;
+  if (user?.role === 'admin' && perm === 'out-door-patient') {
+    return <Navigate to="/dashboard/admin" replace />;
+  }
 
   // Patient name resolution for visits table
   const [patientsMap, setPatientsMap] = useState<Record<number, string>>({});

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   ArrowLeftOnRectangleIcon as LogoutIcon, 
@@ -24,7 +24,6 @@ const Dashboard = () => {
   
   const [currentTime, setCurrentTime] = useState(new Date());
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -236,7 +235,6 @@ const Dashboard = () => {
         { name: 'Overview', to: '/dashboard', icon: HomeIcon },
         { name: 'Patients', to: '/dashboard/admin/patients', icon: UserGroupIcon },
         { name: 'Visits', to: '/dashboard/admin/visits', icon: CalendarDaysIcon },
-        { name: 'Reports', to: '/dashboard/admin/reports', icon: DocumentTextIcon },
         { name: 'Settings', to: '/dashboard/settings', icon: Cog6ToothIcon },
       ];
     }
@@ -540,17 +538,19 @@ const Dashboard = () => {
                   </>
                 )}
 
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
-                  <div className="flex items-center">
-                    <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
-                      <ShoppingCartIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Pharmacy Items</p>
-                      <p className="text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.pharmacy.totalItems}</p>
+                {(user?.role === 'superadmin' || user?.permission === 'over-the-counter') && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                        <ShoppingCartIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Pharmacy Items</p>
+                        <p className="text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.pharmacy.totalItems}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {(user?.role === 'superadmin' || user?.permission === 'out-door-patient') && (
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
@@ -581,11 +581,13 @@ const Dashboard = () => {
                     <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{dashboardData.visits.thisWeek}</div>
                     <div className="mt-2 text-xs text-blue-600">On track</div>
                   </div>
-                  <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                    <div className="text-sm text-gray-600 dark:text-gray-300">Revenue Today</div>
-                    <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.today)}</div>
-                    <div className="mt-2 text-xs text-green-600">Paid inflow</div>
-                  </div>
+                  {(user?.role === 'superadmin' || user?.permission === 'over-the-counter') && (
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-300">Revenue Today</div>
+                      <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.today)}</div>
+                      <div className="mt-2 text-xs text-green-600">Paid inflow</div>
+                    </div>
+                  )}
                   <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
                     <div className="text-sm text-gray-600 dark:text-gray-300">Outstanding Balance</div>
                     <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.outstanding)}</div>

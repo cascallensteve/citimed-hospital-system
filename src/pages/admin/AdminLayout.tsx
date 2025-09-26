@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   UserGroupIcon, 
   CalendarDaysIcon, 
@@ -7,19 +8,31 @@ import {
   PlusIcon,
   MagnifyingGlassIcon,
   DocumentTextIcon,
-  ShoppingCartIcon,
-  BanknotesIcon
+  ShoppingCartIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 
 const AdminLayout = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const permission = (user?.permission as 'out-door-patient' | 'over-the-counter' | undefined) || 'out-door-patient';
   const isOutdoor = permission === 'out-door-patient';
   const isCounter = permission === 'over-the-counter';
 
   // Always start on Overview; content adapts to permission
   const [activeTab, setActiveTab] = useState('home');
+
+  // Compute active section from URL so sidebar highlights correctly even on direct route hits
+  const pathname = location.pathname || '';
+  const activeFromPath = useMemo(() => {
+    if (/\/dashboard\/admin\/?$/.test(pathname)) return 'home';
+    if (pathname.includes('/dashboard/admin/patients')) return 'patients';
+    if (pathname.includes('/dashboard/admin/visits')) return 'visits';
+    if (pathname.includes('/dashboard/admin/reports')) return 'reports';
+    if (pathname.includes('/dashboard/admin/pharmacy')) return 'pharmacy';
+    return 'home';
+  }, [pathname]);
 
   // Sample data for demonstration
   const dashboardData = {
@@ -49,68 +62,72 @@ const AdminLayout = () => {
   const quickActions = useMemo(() => {
     if (isOutdoor) {
       return [
-        { name: 'Add Patient', icon: PlusIcon, color: 'bg-blue-600', href: '#add-patient' },
-        { name: 'New Visit', icon: CalendarDaysIcon, color: 'bg-green-600', href: '#new-visit' },
-        { name: 'Search Patient', icon: MagnifyingGlassIcon, color: 'bg-orange-600', href: '#search' }
+        { name: 'Add Patient', icon: PlusIcon, color: 'bg-blue-600', onClick: () => navigate('/dashboard/admin/patients?add=1') },
+        { name: 'New Visit', icon: CalendarDaysIcon, color: 'bg-green-600', onClick: () => navigate('/dashboard/admin/visits?add=1') },
+        { name: 'Search Patient', icon: MagnifyingGlassIcon, color: 'bg-orange-600', onClick: () => navigate('/dashboard/admin/patients') }
       ];
     }
     return [
-      { name: 'Pharmacy Sale', icon: ShoppingCartIcon, color: 'bg-purple-600', href: '#pharmacy' },
-      { name: 'Search Patient', icon: MagnifyingGlassIcon, color: 'bg-orange-600', href: '#search' }
+      { name: 'Pharmacy Sale', icon: ShoppingCartIcon, color: 'bg-purple-600', onClick: () => navigate('/dashboard/admin/pharmacy?sale=1') },
+      { name: 'Search Patient', icon: MagnifyingGlassIcon, color: 'bg-orange-600', onClick: () => navigate('/dashboard/admin/patients') }
     ];
-  }, [isOutdoor]);
+  }, [isOutdoor, navigate]);
 
   const sidebarItems = useMemo(() => {
     if (isOutdoor) {
       return [
-        { name: 'Overview', icon: ChartBarIcon, id: 'home' },
-        { name: 'Patients', icon: UserGroupIcon, id: 'patients' },
-        { name: 'Visits', icon: CalendarDaysIcon, id: 'visits' },
-        { name: 'Reports', icon: DocumentTextIcon, id: 'reports' }
+        { name: 'Overview', icon: ChartBarIcon, id: 'home', path: '/dashboard/admin' },
+        { name: 'Patients', icon: UserGroupIcon, id: 'patients', path: '/dashboard/admin/patients' },
+        { name: 'Visits', icon: CalendarDaysIcon, id: 'visits', path: '/dashboard/admin/visits' }
       ];
     }
     return [
-      { name: 'Overview', icon: ChartBarIcon, id: 'home' },
-      { name: 'Pharmacy', icon: ShoppingCartIcon, id: 'pharmacy' },
-      { name: 'Reports', icon: DocumentTextIcon, id: 'reports' }
+      { name: 'Overview', icon: ChartBarIcon, id: 'home', path: '/dashboard/admin' },
+      { name: 'Pharmacy', icon: ShoppingCartIcon, id: 'pharmacy', path: '/dashboard/admin/pharmacy' },
+      { name: 'Reports', icon: DocumentTextIcon, id: 'reports', path: '/dashboard/admin/reports' }
     ];
   }, [isOutdoor]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
-        {/* Sidebar */}
-        <div className="w-64 bg-white shadow-sm min-h-screen">
-          <div className="p-6">
-            <div className="flex items-center space-x-3">
-              <img src="/IMAGES/Logo.png" alt="Citimed-Clinic logo" className="h-10 w-auto object-contain" />
-              <h1 className="text-xl font-bold text-gray-900">Citimed-Clinic</h1>
+        {/* Internal Sidebar: only show for Counter Admins to avoid duplicate sidebars for Outdoor Admins */}
+        {isCounter && (
+          <div className="w-64 bg-white shadow-sm min-h-screen">
+            <div className="p-6">
+              <div className="flex items-center space-x-3">
+                <img src="/IMAGES/Logo.png" alt="Citimed-Clinic logo" className="h-10 w-auto object-contain" />
+                <h1 className="text-xl font-bold text-gray-900">Citimed-Clinic</h1>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                {isOutdoor ? 'Admin • Out-door Patient' : 'Admin • Over-the-Counter'}
+              </p>
             </div>
-            <p className="text-sm text-gray-600 mt-1">
-              {isOutdoor ? 'Admin • Out-door Patient' : 'Admin • Over-the-Counter'}
-            </p>
+            
+            <nav className="mt-6">
+              {sidebarItems.map((item) => {
+                const isActive = (activeFromPath === item.id) || (activeTab === item.id && activeFromPath === 'home' && item.id === 'home');
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { setActiveTab(item.id); navigate(item.path); }}
+                    className={`w-full flex items-center px-6 py-3 text-left text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <item.icon className="h-5 w-5 mr-3" />
+                    {item.name}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-          
-          <nav className="mt-6">
-            {sidebarItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center px-6 py-3 text-left text-sm font-medium transition-colors ${
-                  activeTab === item.id
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                <item.icon className="h-5 w-5 mr-3" />
-                {item.name}
-              </button>
-            ))}
-          </nav>
-        </div>
+        )}
 
-        {/* Main Content */}
-        <div className="flex-1 p-6">
+        {/* Main Content (full width for Outdoor Admin) */}
+        <div className={`p-6 ${isCounter ? 'flex-1' : 'w-full'}`}>
           {/* Header */}
           <div className="mb-6">
             <h2 className="text-2xl font-semibold text-gray-900 capitalize">
@@ -136,6 +153,7 @@ const AdminLayout = () => {
                   {quickActions.map((action) => (
                     <button
                       key={action.name}
+                      onClick={action.onClick}
                       className={`${action.color} text-white p-4 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center space-x-2`}
                     >
                       <action.icon className="h-6 w-6" />
@@ -191,17 +209,19 @@ const AdminLayout = () => {
                   </div>
                 )}
 
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center">
-                    <div className="p-2 bg-orange-100 rounded-lg">
-                      <CurrencyDollarIcon className="h-6 w-6 text-orange-600" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Total Paid</p>
-                      <p className="text-2xl font-semibold text-gray-900">${dashboardData.balances.totalPaid.toLocaleString()}</p>
+                {isCounter && (
+                  <div className="bg-white rounded-lg shadow-sm p-6">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-orange-100 rounded-lg">
+                        <CurrencyDollarIcon className="h-6 w-6 text-orange-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Paid</p>
+                        <p className="text-2xl font-semibold text-gray-900">${dashboardData.balances.totalPaid.toLocaleString()}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Recent Activity */}
