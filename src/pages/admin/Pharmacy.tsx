@@ -4,7 +4,6 @@ import {
   MagnifyingGlassIcon, 
   ShoppingCartIcon,
   CurrencyDollarIcon,
-  ExclamationTriangleIcon,
   PencilIcon,
   TrashIcon,
   EyeIcon,
@@ -52,7 +51,7 @@ interface Sale {
 const Pharmacy = () => {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'low-stock' | 'consignments'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'consignments'>('inventory');
   const [showAddItemForm, setShowAddItemForm] = useState(false);
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [showViewItem, setShowViewItem] = useState(false);
@@ -111,6 +110,87 @@ const Pharmacy = () => {
     return compact.length > 300 ? compact.slice(0, 300) + '…' : compact;
   };
 
+  // Print only the Inventory table (respects current search/filter)
+  const printInventoryList = () => {
+    const rows = filteredInventoryItems.map((item, i) => `
+      <tr>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.name}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.unitName || '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.salesInstructions || '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td>
+      </tr>
+    `).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>Pharmacy Inventory</title>
+      <style>
+        body{font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:16px; color:#111827}
+        .header{ text-align:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #e5e7eb }
+        .title{ font-size:18px; font-weight:700 }
+        table{ width:100%; border-collapse:collapse; font-size:12px }
+        th,td{ text-align:left; padding:6px; border-bottom:1px solid #e5e7eb }
+        th{ background:#f9fafb; font-weight:700 }
+      </style>
+    </head><body>
+      <div class="header">
+        <div class="title">Pharmacy Inventory</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Item Name</th><th>Unit Name</th><th>Sales Instructions</th><th>Expiry</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 300);}</script>
+    </body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
+  // Print only the Consignments table (all consignments loaded)
+  const printConsignmentsList = () => {
+    const rows = consignments.map((c: any, i: number) => `
+      <tr>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.item_name || (c.item_details?.name) || '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.quantity}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.supplier_name || '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.purchase_date ? new Date(c.purchase_date).toLocaleDateString() : '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.expiry_date ? new Date(c.expiry_date).toLocaleDateString() : '-'}</td>
+      </tr>
+    `).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>Pharmacy Consignments</title>
+      <style>
+        body{font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:16px; color:#111827}
+        .header{ text-align:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #e5e7eb }
+        .title{ font-size:18px; font-weight:700 }
+        table{ width:100%; border-collapse:collapse; font-size:12px }
+        th,td{ text-align:left; padding:6px; border-bottom:1px solid #e5e7eb }
+        th{ background:#f9fafb; font-weight:700 }
+      </style>
+    </head><body>
+      <div class="header">
+        <div class="title">Pharmacy Consignments</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Item</th><th>Quantity</th><th>Supplier</th><th>Purchased</th><th>Expiry</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 300);}</script>
+    </body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
   const authFetch = async (url: string, init?: RequestInit) => {
     const token = localStorage.getItem('token') || '';
     const baseHeaders = {
@@ -159,7 +239,7 @@ const Pharmacy = () => {
     } catch { setConsignments([]); }
   };
 
-  const lowStockItems = items.filter(item => item.quantity < 4);
+  // Removed Low Stock feature per requirements
 
   const totalInventoryValue = items.reduce((sum, item) => sum + ((item.purchaseCost || 0) * item.quantity), 0);
 
@@ -575,12 +655,11 @@ const Pharmacy = () => {
   };
 
   // Filters
-  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'low'>('all');
+  const [inventoryFilter, setInventoryFilter] = useState<'all'>('all');
   const [salesRange, setSalesRange] = useState<'today' | 'week' | 'all'>('all');
 
   const filteredInventoryItems = (items || [])
-    .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || (item.supplierName || '').toLowerCase().includes(searchTerm.toLowerCase()))
-    .filter(item => inventoryFilter === 'low' ? item.quantity < 4 : true);
+    .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || (item.supplierName || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
   const salesFilteredBySearch = (sales || [])
     .filter(s => s.customerName.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -711,17 +790,7 @@ const Pharmacy = () => {
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <div className="flex items-center">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <ExclamationTriangleIcon className="h-6 w-6 text-orange-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Low Stock Items</p>
-              <p className="text-2xl font-semibold text-gray-900">{lowStockItems.length}</p>
-            </div>
-          </div>
-        </div>
+        {/* Low Stock KPI removed */}
       </div>
       )}
 
@@ -775,7 +844,6 @@ const Pharmacy = () => {
             {[
               { id: 'inventory', name: 'Inventory', count: items.length, color: 'bg-green-100 text-green-700 border-green-400' },
               { id: 'sales', name: 'Sales', count: sales.length, color: 'bg-blue-100 text-blue-700 border-blue-400' },
-              { id: 'low-stock', name: 'Low Stock', count: lowStockItems.length, color: 'bg-orange-100 text-orange-700 border-orange-400' },
               { id: 'consignments', name: 'Consignments', count: consignments.length, color: 'bg-purple-100 text-purple-700 border-purple-400' }
             ].map((tab) => (
               <button
@@ -807,9 +875,8 @@ const Pharmacy = () => {
                 <>
                   <select value={inventoryFilter} onChange={(e) => setInventoryFilter(e.target.value as any)} className="px-3 py-2 border border-gray-300 rounded-lg">
                     <option value="all">All Items</option>
-                    <option value="low">Low Stock (&lt; 4)</option>
                   </select>
-                  <button onClick={() => window.print()} className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">Print Items</button>
+                  <button onClick={printInventoryList} className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">Print Items</button>
                 </>
               )}
               {activeTab === 'sales' && (
@@ -822,56 +889,15 @@ const Pharmacy = () => {
                   <button onClick={printSalesList} className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Print Sales</button>
                 </>
               )}
+              {activeTab === 'consignments' && (
+                <>
+                  <button onClick={printConsignmentsList} className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">Print Consignments</button>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Low Stock Tab */}
-          {activeTab === 'low-stock' && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Threshold</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {lowStockItems.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <ExclamationTriangleIcon className="h-5 w-5 text-red-500 mr-3" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                            <div className="text-sm text-gray-500">{item.supplierName || ''}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">
-                        {item.quantity}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        4
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.supplierName || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button className="text-blue-600 hover:text-blue-900">
-                          Reorder
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Low Stock Tab removed */}
           {/* Consignments Tab */}
           {activeTab === 'consignments' && (
             <div className="overflow-x-auto">

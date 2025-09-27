@@ -55,7 +55,6 @@ const Dashboard = () => {
   const [patientsTotal, setPatientsTotal] = useState<number | null>(null);
   const [patientsNewToday, setPatientsNewToday] = useState<number>(0);
   const [pharmacyItemsCount, setPharmacyItemsCount] = useState<number>(0);
-  const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [visitsToday, setVisitsToday] = useState<number>(0);
   const [visitsThisWeek, setVisitsThisWeek] = useState<number>(0);
   const [revenueToday, setRevenueToday] = useState<number>(0);
@@ -135,11 +134,6 @@ const Dashboard = () => {
         if (!aborted) {
           const items: any[] = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.data) ? data.data : []);
           setPharmacyItemsCount(items.length || 0);
-          // Compute low stock threshold (<= 5 units) for counter admins overview
-          try {
-            const low = items.filter((it: any) => Number(it?.quantity ?? 0) <= 5).length;
-            setLowStockCount(low);
-          } catch { setLowStockCount(0); }
         }
       } catch {/* ignore */}
     };
@@ -648,17 +642,7 @@ const Dashboard = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
-                      <div className="flex items-center">
-                        <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
-                          <ShoppingCartIcon className="h-6 w-6 text-red-600 dark:text-red-400" />
-                        </div>
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Low Stock Items (≤5)</p>
-                          <p className="text-2xl font-semibold text-gray-900 dark:text-white">{lowStockCount}</p>
-                        </div>
-                      </div>
-                    </div>
+                    {/* Low Stock card removed per requirements */}
                   </>
                 )}
               </div>
