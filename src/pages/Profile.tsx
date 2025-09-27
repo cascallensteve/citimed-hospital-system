@@ -119,15 +119,23 @@ const Profile = () => {
         const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
         const res2 = await fetchWithAuth(`${base}/all-users`);
         const data2 = await res2.json();
-        if (res2.ok && Array.isArray(data2?.users)) setAdmins(data2.users);
+        if (res2.ok && Array.isArray(data2?.users)) {
+          setAdmins(data2.users);
+          const createdRow = data2.users.find((u: any) => String(u?.email).toLowerCase() === createdEmail.toLowerCase());
+          if (createdRow) {
+            setSelectedAdmin(createdRow as any);
+            openDetails(createdRow as any);
+          }
+        }
       } catch {}
       try {
         if (createdEmail) {
           await api.auth.resendVerificationOtp({ email: createdEmail });
+          toast.success('Admin added. Verification code sent.');
         }
       } catch {}
-      if (createdEmail) {
-        navigate(`/verify-email?email=${encodeURIComponent(createdEmail)}`);
+      if (!createdEmail) {
+        toast.success('Admin added.');
       }
     } catch (err) {
       toast.error((err as Error).message || 'Failed to create admin');
@@ -305,8 +313,8 @@ const Profile = () => {
         </div>
       </section>
 
-      {/* Super Admin: Add New Admin */}
-      {isSuper && (
+      {/* Super Admin: Add New Admin (hidden while details/verification modal is open) */}
+      {isSuper && !selectedAdmin && (
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white">Add New Admin</h3>
@@ -361,8 +369,8 @@ const Profile = () => {
         </section>
       )}
 
-      {/* Super Admin: Real Admins list (connected to backend) */}
-      {isSuper && (
+      {/* Super Admin: Real Admins list (connected to backend). Hidden while details/verification modal is open */}
+      {isSuper && !selectedAdmin && (
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white">Admins</h3>

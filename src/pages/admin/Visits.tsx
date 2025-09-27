@@ -32,6 +32,7 @@ interface Visit {
   charges?: string;
   paid?: string;
   balance?: string;
+  payment_method?: string;
 }
 
 interface PatientShort {
@@ -280,6 +281,7 @@ const Visits = () => {
     charges: v?.charges ?? '',
     paid: (v?.paid ?? v?.total_paid ?? ''),
     balance: v?.balance ?? '',
+    payment_method: (v?.payment_type ?? v?.last_payment_type ?? v?.paymentMethod ?? ''),
   });
 
   const resolvePatientName = (patientId?: number) => {
@@ -785,11 +787,11 @@ const Visits = () => {
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Patient</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Registration</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Diagnosis</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Charges</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -801,11 +803,11 @@ const Visits = () => {
                       <td className="px-6 py-3 whitespace-nowrap text-gray-900">{formatPatientDisplay(Number(v.patient), v.patientName)}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{resolvePatientPhone(Number(v.patient)) || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700 capitalize">{resolvePatientType(Number(v.patient)) || '—'}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.patientNumber || resolvePatientNumber(Number(v.patient)) || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.diagnosis || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.charges ?? '0.00'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.paid ?? '0.00'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700 capitalize">{v.payment_method || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.balance ?? '0.00'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">
                         <div className="flex items-center gap-2">

@@ -290,6 +290,7 @@ const Patients = () => {
       toast.success(data?.message || 'Patient added successfully');
 
       // Append to local list for immediate feedback (best-effort mapping)
+      const createdTs = (data?.Patient?.date_created || data?.Patient?.created_at || (data as any)?.timestamp || '') as string;
       const display: Patient = {
         id: String(data?.Patient?.id || Date.now()),
         patientNumber: extractPatientNumber(patientNumber),
@@ -306,7 +307,7 @@ const Patients = () => {
           if (pt === 'repeat') return 'Repeat';
           return 'Walk-in';
         })(),
-        registrationDate: new Date().toISOString().split('T')[0],
+        registrationDate: createdTs ? new Date(createdTs).toLocaleDateString() : new Date().toLocaleDateString(),
         additionalInfo: (data?.Patient?.notes ?? newPatient.notes) || undefined,
       } as Patient;
       setPatients(prev => [display, ...prev]);
@@ -337,6 +338,7 @@ const Patients = () => {
     if (pt === 'referral') patientType = 'Referred';
     else if (pt === 'repeat') patientType = 'Repeat';
     const fullPatientNumber = `CIT-${new Date().getFullYear()}-${String(apiP?.id ?? '').padStart(3, '0')}`;
+    const createdTs = apiP?.created_at || apiP?.date_created || apiP?.createdAt || apiP?.timestamp || '';
     return {
       id: String(apiP?.id ?? ''),
       patientNumber: extractPatientNumber(fullPatientNumber),
@@ -346,7 +348,7 @@ const Patients = () => {
       phoneNumber: apiP?.phone_no ?? '',
       location: apiP?.location ?? '',
       patientType,
-      registrationDate: new Date().toISOString().split('T')[0],
+      registrationDate: createdTs ? new Date(createdTs).toLocaleDateString() : '',
       additionalInfo: apiP?.notes ?? undefined,
     };
   };
