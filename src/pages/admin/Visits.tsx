@@ -294,6 +294,18 @@ const Visits = () => {
     return p ? (p.phone || '') : '';
   };
 
+  // Resolve Client ID (simple number) and Client Type from patients list
+  const resolvePatientNumber = (patientId?: number) => {
+    if (!patientId) return '';
+    const p = patients.find(pp => Number(pp.id) === Number(patientId));
+    return p ? (p.patientNumber || '') : '';
+  };
+  const resolvePatientType = (patientId?: number) => {
+    if (!patientId) return '';
+    const p = patients.find(pp => Number(pp.id) === Number(patientId));
+    return p ? (p.type || '') : '';
+  };
+
   // Helpers to format patient display (ID before name and remove 'Patient' prefix)
   const stripPatientPrefix = (name?: string) => (name || '').replace(/^\s*Patient\s*#?\s*/i, '').trim();
   const formatPatientDisplay = (id?: number, name?: string) => {
@@ -769,7 +781,11 @@ const Visits = () => {
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Patient ID</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Registration</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Diagnosis</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Charges</th>
@@ -781,7 +797,11 @@ const Visits = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {paginatedVisits.map(v => (
                     <tr key={v.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-900">{String(v.patient || '').trim() || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-900">{formatPatientDisplay(Number(v.patient), v.patientName)}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{resolvePatientPhone(Number(v.patient)) || '—'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700 capitalize">{resolvePatientType(Number(v.patient)) || '—'}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.patientNumber || resolvePatientNumber(Number(v.patient)) || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.diagnosis || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.charges ?? '0.00'}</td>

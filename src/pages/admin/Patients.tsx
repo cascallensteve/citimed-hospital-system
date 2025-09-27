@@ -414,7 +414,25 @@ const Patients = () => {
     finally { setLoadingDetail(false); }
   };
 
-  const openDeleteConfirm = (patient: Patient) => {
+  const openDeleteConfirm = async (patient: Patient) => {
+    // Prevent deleting a patient that already has visits
+    try {
+      const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+      // Use all-visits endpoint and filter client-side by patient id (robust to backend variants)
+      let res = await authFetch(`${base}/visits/all-visits`);
+      if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/visits/all-visits/`);
+      const data = await res.json().catch(() => ({}));
+      const arr: any[] = Array.isArray(data?.visits) ? data.visits : (Array.isArray(data?.data) ? data.data : []);
+      const anyVisit = arr.some(v => String(v?.patient) === String(patient.id));
+      if (anyVisit) {
+        toast.error('Cannot delete patient: visits exist for this patient.');
+        return;
+      }
+    } catch (_) {
+      // If we cannot verify safely, err on the side of caution and block deletion
+      toast.error('Cannot verify visits for this patient right now. Deletion blocked.');
+      return;
+    }
     setConfirmDeletePatient(patient);
   };
 
