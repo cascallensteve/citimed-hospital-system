@@ -165,6 +165,23 @@ const Visits = () => {
     return isFinite(n) ? n : 0;
   };
 
+  // Sanitize currency text input to a KSH numeric string with up to 2 decimals
+  const sanitizeCurrencyInput = (input: string): string => {
+    const cleaned = String(input).replace(/[^0-9.]/g, '');
+    const parts = cleaned.split('.');
+    const left = parts[0] || '';
+    const right = parts.length > 1 ? (parts[1] || '').slice(0, 2) : '';
+    let res = left.replace(/^0+(\d)/, '$1');
+    if (right !== '') res += `.${right}`;
+    return res;
+  };
+
+  // Sanitize to integer digits only (no decimals) for Charges in KSH
+  const sanitizeIntegerCurrencyInput = (input: string): string => {
+    const digitsOnly = String(input).replace(/\D/g, '');
+    return digitsOnly.replace(/^0+(\d)/, '$1');
+  };
+
   // removed unused getPaymentStatus
 
   // Record a payment for the newly created visit
@@ -275,6 +292,14 @@ const Visits = () => {
     if (!patientId) return '';
     const p = patients.find(pp => Number(pp.id) === Number(patientId));
     return p ? (p.phone || '') : '';
+  };
+
+  // Helpers to format patient display (ID before name and remove 'Patient' prefix)
+  const stripPatientPrefix = (name?: string) => (name || '').replace(/^\s*Patient\s*#?\s*/i, '').trim();
+  const formatPatientDisplay = (id?: number, name?: string) => {
+    const cleanName = stripPatientPrefix(name);
+    const idPart = (id ?? '') !== '' ? String(id) : '';
+    return [idPart, cleanName].filter(Boolean).join(' - ');
   };
 
   const authFetch = async (url: string, init?: RequestInit) => {
@@ -644,7 +669,7 @@ const Visits = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Hero Banner (hidden when adding a visit) */}
-      {!showVisitForm && (
+      {!showVisitForm && !paymentVisit && (
         <div
           className="relative overflow-hidden rounded-xl text-white shadow-lg"
           style={{
@@ -682,7 +707,7 @@ const Visits = () => {
       )}
 
       {/* Tabs for browsing */}
-      {!showVisitForm && (
+      {!showVisitForm && !paymentVisit && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
@@ -731,7 +756,7 @@ const Visits = () => {
       )}
 
       {/* Tab content: Visit Details list */}
-      {!showVisitForm && activeTab === 'visits' && (
+      {!showVisitForm && !paymentVisit && activeTab === 'visits' && (
         <div id="recent-visits" className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <h3 className="text-lg font-medium text-gray-900">Visit Details</h3>
@@ -756,7 +781,7 @@ const Visits = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {paginatedVisits.map(v => (
                     <tr key={v.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-3 whitespace-nowrap text-gray-900">{v.patientName}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-gray-900">{formatPatientDisplay(Number(v.patient), v.patientName)}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.diagnosis || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.charges ?? '0.00'}</td>
@@ -810,7 +835,7 @@ const Visits = () => {
       )}
 
       {/* Tab content: Patients list */}
-      {!showVisitForm && activeTab === 'patients' && (
+      {!showVisitForm && !paymentVisit && activeTab === 'patients' && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">Patients</h3>
@@ -878,7 +903,13 @@ const Visits = () => {
             </div>
             <div className="md:col-span-2">
               <div className="text-sm text-gray-600">Already Paid</div>
-              <div className="text-lg font-semibold text-gray-900">{paymentVisit.paid || '0.00'}</div>
+              <div className="text-lg font-semibold text-gray-900">
+                {(() => {
+                  const already = moneyToNumber(paymentVisit.paid);
+                  const incoming = moneyToNumber(paymentAmount);
+                  return (already + incoming).toFixed(2);
+                })()}
+              </div>
             </div>
             <div className="md:col-span-2">
               <div className="text-sm text-gray-600">Balance (after this payment)</div>
@@ -894,7 +925,13 @@ const Visits = () => {
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Paid Now</label>
-              <input value={paymentAmount} onChange={e=>setPaymentAmount(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g., 600.00" />
+              <input
+                value={paymentAmount}
+                onChange={e => setPaymentAmount(sanitizeCurrencyInput(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="KSH"
+                inputMode="decimal"
+              />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Payment Type</label>
@@ -930,7 +967,7 @@ const Visits = () => {
           </div>
 
           <div className="px-4 py-4 md:px-6">
-            <form className="space-y-6" onSubmit={submitVisit}>
+            <form className="space-y-6" onSubmit={submitVisit} noValidate>
               {/* Patient Selection with search */}
               <div className="space-y-3">
                 <label className="block text-sm font-medium text-gray-700">Select Patient *</label>
@@ -1082,9 +1119,10 @@ const Visits = () => {
                 <input
                   type="text"
                   value={currentVisit.charges || ''}
-                  onChange={(e)=>handleInputChange('charges' as any, e.target.value)}
+                  onChange={(e)=>handleInputChange('charges' as any, sanitizeIntegerCurrencyInput(e.target.value))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., 2500.00"
+                  placeholder="KSH"
+                  inputMode="numeric"
                 />
               </div>
 
@@ -1212,9 +1250,8 @@ const Visits = () => {
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border border-gray-100 p-4">
                   <h4 className="text-sm font-medium text-gray-900 mb-2">Patient</h4>
-                  <p className="text-sm text-gray-700">{selectedVisit.patientName || (selectedVisit.patient ? `Patient #${selectedVisit.patient}` : '—')}</p>
+                  <p className="text-sm text-gray-700">{formatPatientDisplay(Number(selectedVisit.patient), selectedVisit.patientName) || '—'}</p>
                   <p className="text-xs text-gray-500">Patient ID: {selectedVisit.patient}</p>
-                  <p className="text-xs text-gray-500">Client ID: {selectedVisit.patientNumber || '—'}</p>
                   {selectedVisit.timestamp && (
                     <p className="text-xs text-gray-500 mt-1">Date: {new Date(selectedVisit.timestamp).toLocaleString()}</p>
                   )}
