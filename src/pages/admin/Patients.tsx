@@ -73,6 +73,14 @@ const Patients = () => {
     return `CIT-${year}-${randomNum}`;
   };
 
+  // Helper function to extract simple number from patient number
+  const extractPatientNumber = (patientNumber: string): string => {
+    if (patientNumber.includes('CIT-')) {
+      return patientNumber.split('-').pop() || patientNumber;
+    }
+    return patientNumber;
+  };
+
   // Age is computed as decimal in the payload; traditional age calc removed.
 
   const [adding, setAdding] = useState(false);
@@ -284,7 +292,7 @@ const Patients = () => {
       // Append to local list for immediate feedback (best-effort mapping)
       const display: Patient = {
         id: String(data?.Patient?.id || Date.now()),
-        patientNumber,
+        patientNumber: extractPatientNumber(patientNumber),
         fullName: `${data?.Patient?.first_name ?? firstName ?? ''} ${data?.Patient?.last_name ?? lastName ?? ''}`.trim(),
         age: typeof data?.Patient?.age === 'string'
           ? Number(data.Patient.age)
@@ -328,9 +336,10 @@ const Patients = () => {
     let patientType: Patient['patientType'] = 'Walk-in';
     if (pt === 'referral') patientType = 'Referred';
     else if (pt === 'repeat') patientType = 'Repeat';
+    const fullPatientNumber = `CIT-${new Date().getFullYear()}-${String(apiP?.id ?? '').padStart(3, '0')}`;
     return {
       id: String(apiP?.id ?? ''),
-      patientNumber: `CIT-${new Date().getFullYear()}-${String(apiP?.id ?? '').padStart(3, '0')}`,
+      patientNumber: extractPatientNumber(fullPatientNumber),
       fullName: `${apiP?.first_name ?? ''} ${apiP?.last_name ?? ''}`.trim(),
       age: typeof apiP?.age === 'string' ? Number(apiP.age) : (apiP?.age ?? 0),
       gender: (apiP?.gender as any) ?? 'Other',
@@ -771,6 +780,7 @@ const Patients = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
@@ -782,6 +792,9 @@ const Patients = () => {
               {paginatedPatients.map((patient) => (
                 <tr key={patient.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900 font-mono">{patient.patientNumber}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="flex-shrink-0 h-10 w-10">
                         <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -790,7 +803,6 @@ const Patients = () => {
                       </div>
                       <div className="ml-4">
                         <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                        <div className="text-sm text-gray-500">{patient.patientNumber}</div>
                         <div className="text-xs text-gray-400">{patient.age} years, {patient.gender}</div>
                       </div>
                     </div>
@@ -882,8 +894,8 @@ const Patients = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-xs text-gray-500">Patient #</p>
-                  <p className="font-medium text-gray-900">{selectedPatient.patientNumber}</p>
+                  <p className="text-xs text-gray-500">Patient ID</p>
+                  <p className="font-medium text-gray-900 font-mono">{selectedPatient.patientNumber}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Full Name</p>

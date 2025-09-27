@@ -449,7 +449,9 @@ const Visits = () => {
           const nameSingle = p?.name ?? p?.full_name ?? p?.fullName ?? '';
           const fallback = nameFromPair || nameSingle || (p?.email ? String(p.email).split('@')[0] : '') || `Patient #${p?.id ?? ''}`;
           const phone = p?.phone_no ?? p?.phone ?? p?.phoneNumber ?? '';
-          const patNum = p?.patient_number ?? p?.patientNumber ?? (p?.id ? `CIT-${new Date().getFullYear()}-${String(p.id).padStart(3,'0')}` : undefined);
+          const fullPatNum = p?.patient_number ?? p?.patientNumber ?? (p?.id ? `CIT-${new Date().getFullYear()}-${String(p.id).padStart(3,'0')}` : undefined);
+          // Extract simple number from patient number
+          const patNum = fullPatNum && fullPatNum.includes('CIT-') ? fullPatNum.split('-').pop() : fullPatNum;
           return {
             id: idStr,
             fullName: fallback,
