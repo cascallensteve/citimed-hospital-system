@@ -310,6 +310,7 @@ export type AdminUser = {
   phone_no?: string | null;
   userType: 'admin' | 'super-admin';
   is_email_verified: boolean;
+  permission?: 'out-door-patient' | 'over-the-counter' | string;
 };
 
 export const superAdminApi = {
