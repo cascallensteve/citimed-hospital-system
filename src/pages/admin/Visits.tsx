@@ -281,7 +281,7 @@ const Visits = () => {
     charges: v?.charges ?? '',
     paid: (v?.paid ?? v?.total_paid ?? ''),
     balance: v?.balance ?? '',
-    payment_method: (v?.payment_type ?? v?.last_payment_type ?? v?.paymentMethod ?? ''),
+    payment_method: (v?.payment_method ?? v?.payment_type ?? v?.last_payment_type ?? v?.paymentMethod ?? v?.paymentType ?? ''),
   });
 
   const resolvePatientName = (patientId?: number) => {
@@ -307,6 +307,9 @@ const Visits = () => {
     const p = patients.find(pp => Number(pp.id) === Number(patientId));
     return p ? (p.type || '') : '';
   };
+
+  // Use exact payment method from backend; fall back to em dash when missing
+  const formatPaymentMethod = (val?: string) => (val ? String(val) : '—');
 
   // Helpers to format patient display (ID before name and remove 'Patient' prefix)
   const stripPatientPrefix = (name?: string) => (name || '').replace(/^\s*Patient\s*#?\s*/i, '').trim();
@@ -789,10 +792,6 @@ const Visits = () => {
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Type</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Diagnosis</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Charges</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Paid</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -805,13 +804,9 @@ const Visits = () => {
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700 capitalize">{resolvePatientType(Number(v.patient)) || '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.timestamp ? new Date(v.timestamp).toLocaleString() : '—'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.diagnosis || '—'}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.charges ?? '0.00'}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.paid ?? '0.00'}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-gray-700 capitalize">{v.payment_method || '—'}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-gray-700">{v.balance ?? '0.00'}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-gray-700">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setSelectedVisit({ ...v, patientName: resolvePatientName(Number(v.patient)) || v.patientName })} className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
+                          <button onClick={() => { setSelectedVisit({ ...v, patientName: resolvePatientName(Number(v.patient)) || v.patientName }); refreshVisitDetail(v.id); }} className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
                             <EyeIcon className="h-4 w-4" /> View
                           </button>
                           <button onClick={() => openEdit(v)} className="px-2 py-1 rounded-md bg-green-600 hover:bg-green-700 text-white flex items-center gap-1">
@@ -1283,6 +1278,7 @@ const Visits = () => {
                   <h4 className="text-sm font-medium text-gray-900 mb-2">Billing</h4>
                   <p className="text-sm text-gray-700">Charges: {selectedVisit.charges ?? '0.00'}</p>
                   <p className="text-sm text-gray-700">Paid: {selectedVisit.paid ?? '0.00'}</p>
+                  <p className="text-sm text-gray-700">Payment Method: {formatPaymentMethod(selectedVisit.payment_method)}</p>
                   <p className="text-sm text-gray-700">Balance: {selectedVisit.balance ?? '0.00'}</p>
                 </div>
 

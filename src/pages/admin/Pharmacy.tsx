@@ -118,7 +118,7 @@ const Pharmacy = () => {
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.name}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.unitName || '-'}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.salesInstructions || '-'}</td>
-        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${item.quantity}</td>
       </tr>
     `).join('');
     const html = `<!doctype html><html><head><meta charset="utf-8" />
@@ -137,7 +137,7 @@ const Pharmacy = () => {
       </div>
       <table>
         <thead>
-          <tr><th>#</th><th>Item Name</th><th>Unit Name</th><th>Sales Instructions</th><th>Expiry</th></tr>
+          <tr><th>#</th><th>Item Name</th><th>Unit Name</th><th>Sales Instructions</th><th>Quantity</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -644,8 +644,7 @@ const Pharmacy = () => {
         <tr><td><b>Name</b></td><td>${item.name}</td></tr>
         <tr><td><b>Supplier</b></td><td>${item.supplierName || '-'}</td></tr>
         <tr><td><b>Cost</b></td><td>${(new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'})).format(item.purchaseCost || 0)}</td></tr>
-        <tr><td><b>Stock</b></td><td>${item.quantity}</td></tr>
-        <tr><td><b>Expiry</b></td><td>${item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td></tr>
+        <tr><td><b>Quantity</b></td><td>${item.quantity}</td></tr>
       </table>
       <script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 300);}</script>
       </body></html>`;
@@ -805,6 +804,7 @@ const Pharmacy = () => {
             <div className="space-y-1 text-sm text-gray-700 mb-4">
               <div><span className="font-medium">Customer:</span> {saleDetail.customer_name}</div>
               <div><span className="font-medium">Total:</span> {formatKES(Number(saleDetail.total_amount || 0))}</div>
+              <div><span className="font-medium">Items:</span> {(saleDetail.items || []).reduce((sum, l) => sum + (parseInt(String(l.amount || '0')) || 0), 0)}</div>
               <div><span className="font-medium">Date:</span> {saleDetail.timestamp ? new Date(saleDetail.timestamp).toLocaleString() : '-'}</div>
             </div>
             <div className="overflow-x-auto">
@@ -813,7 +813,7 @@ const Pharmacy = () => {
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Price</th>
                   </tr>
                 </thead>
@@ -944,7 +944,7 @@ const Pharmacy = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sales Instructions</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -961,7 +961,7 @@ const Pharmacy = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.unitName || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.salesInstructions || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.quantity}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                         <button
                           onClick={() => { setSelectedItem(item); setShowViewItem(true); }}

@@ -211,9 +211,9 @@ const Login = () => {
             
             <div className="mt-8 text-center">
               <p className="text-sm text-blue-700">
-                New here?{' '}
+               {' '}
                 <a href="/signup/super" className="font-medium text-blue-600 hover:text-blue-500">
-                  Create super admin account
+                
                 </a>
               </p>
             </div>
