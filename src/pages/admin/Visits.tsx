@@ -1244,8 +1244,20 @@ const Visits = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <button
                             onClick={() => {
-                              setSelectedPatient({ id: String(p.id), fullName: p.fullName, phone: p.phone, patientNumber: p.patientNumber, type: p.type });
-                              setPatientSearch(`${p.fullName} (${p.patientNumber || p.id})`);
+                              // Set full selected patient details for the info card
+                              setSelectedPatient({
+                                id: String(p.id),
+                                fullName: p.fullName,
+                                phone: p.phone,
+                                patientNumber: p.patientNumber,
+                                type: p.type,
+                                age: p.age,
+                                gender: p.gender as any,
+                                location: p.location,
+                                registeredAt: p.registeredAt,
+                              });
+                              // Keep search input in a consistent ID-first format
+                              setPatientSearch(`${p.patientNumber || p.id} - ${p.fullName}`);
                               setCurrentVisit(cv => ({ ...cv, patient: Number(p.id) }));
                               setShowVisitForm(true);
                               const url = new URL(window.location.href);

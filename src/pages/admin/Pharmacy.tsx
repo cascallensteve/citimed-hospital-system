@@ -926,9 +926,12 @@ const Pharmacy = () => {
       toast.success('Sale recorded');
       setShowSaleForm(false);
       setNewSale({ customer_name: '', lines: [{ itemId: '', amount: 1, unitPrice: '', discount: '' }] });
+      // Auto-print immediately for speed; avoid extra prompt
       if (newId) {
         setLastSaleId(newId);
-        setShowPostSalePrompt(true);
+        setShowPostSalePrompt(false);
+        // Fire and forget: load and print thermal receipt fast
+        printReceiptBySaleId(newId);
       } else {
         setLastSaleId(null);
         setShowPostSalePrompt(false);
@@ -1011,8 +1014,10 @@ const Pharmacy = () => {
     .filter((s) => {
       const q = (searchTerm || '').toString().toLowerCase();
       if (!q) return true;
-      const name = (s?.customerName || '').toString().toLowerCase();
-      return name.includes(q);
+      const idMatch = (s?.id || '').toString().toLowerCase().includes(q);
+      const dateStr = s?.timestamp ? new Date(s.timestamp).toLocaleString().toLowerCase() : '';
+      const dateMatch = dateStr.includes(q);
+      return idMatch || dateMatch;
     });
   const salesDisplayed = (() => {
     // Always show newest first
@@ -1059,7 +1064,6 @@ const Pharmacy = () => {
     const rows = salesDisplayed.map((s, i) => `
       <tr>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
-        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).customerName}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).itemCount}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).totalAmount}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).timestamp ? new Date((s as any).timestamp).toLocaleString() : '-'}</td>
@@ -1081,7 +1085,7 @@ const Pharmacy = () => {
       </div>
       <table>
         <thead>
-          <tr><th>#</th><th>Customer</th><th>Items</th><th>Total</th><th>Date</th></tr>
+          <tr><th>#</th><th>Items</th><th>Total</th><th>Date</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1306,7 +1310,7 @@ const Pharmacy = () => {
               <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder={activeTab === 'sales' ? 'Search sales by customer…' : 'Search items by name or supplier…'}
+                placeholder={activeTab === 'sales' ? 'Search sales by ID or date…' : 'Search items by name or supplier…'}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
