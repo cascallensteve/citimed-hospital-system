@@ -40,8 +40,8 @@ const SuperAdminSignup = () => {
     setLoading(true);
     try {
       await signupSuperAdmin(form.first_name, form.last_name, form.email, form.password);
-      toast.success('Account created. Please verify your email.');
-      navigate('/verify-email?email=' + encodeURIComponent(form.email));
+      toast.success('Account created. Please log in.');
+      navigate('/login');
     } catch (e) {
       toast.error((e as Error).message);
     } finally {

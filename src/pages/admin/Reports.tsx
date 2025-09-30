@@ -82,6 +82,10 @@ const Reports = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [exporting, setExporting] = useState<boolean>(false);
+  const [singleDay, setSingleDay] = useState<string>('');
+  const [showStartCal, setShowStartCal] = useState(false);
+  const [showEndCal, setShowEndCal] = useState(false);
+  const [showSingleCal, setShowSingleCal] = useState(false);
 
   // Tabbed, paginated data viewers
   type TabKey = 'visits' | 'sales' | 'consignments' | 'balances';
@@ -271,7 +275,14 @@ const Reports = () => {
         setTableLoading(false);
         return;
       }
-      setTableLoading(true);
+      // Decide whether to show spinner: if we already have base data to filter client‑side, keep UI responsive (no spinner)
+      const hasLocalBase = (
+        (tab === 'visits' && Array.isArray(visits) && visits.length > 0) ||
+        (tab === 'sales' && Array.isArray(sales) && sales.length > 0) ||
+        (tab === 'consignments' && Array.isArray(consignments) && consignments.length > 0) ||
+        (tab === 'balances' && Array.isArray(balanceVisits) && balanceVisits.length > 0)
+      );
+      setTableLoading(!hasLocalBase);
       setError('');
       try {
         // For no range: hydrate from global cache to avoid network
@@ -434,10 +445,17 @@ const Reports = () => {
         if (!cancelled) setTableLoading(false);
       }
     };
-    loadTabData();
-    // Eagerly prefetch other tabs for this range in background (no spinner)
+    // Debounce network fetch when a date range is active to keep UI responsive
+    let debounceTimer: any = null;
+    if (hasRange) {
+      debounceTimer = setTimeout(loadTabData, 250);
+    } else {
+      loadTabData();
+    }
+    // Eagerly prefetch other tabs in background only when no range to avoid extra network during filtering
     const prefetch = async () => {
       const rangeKey = `${from || ''}|${to || ''}`;
+      if (hasRange) return; // skip prefetch when filtering by date for faster UX
       const others: TabKey[] = (['visits','sales','consignments','balances'] as TabKey[]).filter(t => t !== tab);
       const tasks = others
         .filter(t => !(loadedTabs[t] && lastRangeByTab[t] === rangeKey))
@@ -570,7 +588,7 @@ const Reports = () => {
       await Promise.allSettled(tasks);
     };
     prefetch();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (debounceTimer) clearTimeout(debounceTimer); };
   }, [tab, hasRange, from, to, user?.role, loadedTabs, lastRangeByTab]);
 
   // Helpers: date filtering by range
@@ -994,7 +1012,7 @@ const Reports = () => {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap">
               <div className="text-sm text-gray-700 font-medium">Date Range</div>
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
                 <label className="text-sm text-gray-600">Start</label>
                 <input
                   type="date"
@@ -1002,8 +1020,20 @@ const Reports = () => {
                   onChange={e => setFrom(e.target.value)}
                   className="px-3 py-2 rounded-md bg-green-600 text-white text-sm focus:ring-2 focus:ring-green-500 focus:outline-none cursor-pointer hover:bg-green-700"
                 />
+                <button type="button" onClick={()=>setShowStartCal(v=>!v)} className="px-2 py-1 text-xs rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800">Calendar</button>
+                {showStartCal && (
+                  <div className="absolute z-20 top-full mt-2 left-0 bg-white border border-gray-200 rounded-md p-2 shadow">
+                    <CalendarGrid
+                      year={viewYear}
+                      month={viewMonth}
+                      from={from}
+                      to={from}
+                      onPick={(d)=>{ setFrom(d); setShowStartCal(false); }}
+                    />
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
                 <label className="text-sm text-gray-600">End</label>
                 <input
                   type="date"
@@ -1011,6 +1041,59 @@ const Reports = () => {
                   onChange={e => setTo(e.target.value)}
                   className="px-3 py-2 rounded-md bg-green-600 text-white text-sm focus:ring-2 focus:ring-green-500 focus:outline-none cursor-pointer hover:bg-green-700"
                 />
+                <button type="button" onClick={()=>setShowEndCal(v=>!v)} className="px-2 py-1 text-xs rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800">Calendar</button>
+                {showEndCal && (
+                  <div className="absolute z-20 top-full mt-2 left-0 bg-white border border-gray-200 rounded-md p-2 shadow">
+                    <CalendarGrid
+                      year={viewYear}
+                      month={viewMonth}
+                      from={to}
+                      to={to}
+                      onPick={(d)=>{ setTo(d); setShowEndCal(false); }}
+                    />
+                  </div>
+                )}
+              </div>
+              {/* Quick presets */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const iso = d.toISOString().slice(0,10);
+                    setFrom(iso); setTo(iso);
+                  }}
+                  className="px-2 py-1.5 rounded-md text-xs bg-gray-100 hover:bg-gray-200 text-gray-800"
+                  title="Set range to today"
+                >Today</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const day = now.getDay();
+                    const diffToMonday = (day === 0 ? 6 : day - 1);
+                    const monday = new Date(now); monday.setDate(now.getDate() - diffToMonday);
+                    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+                    const f = monday.toISOString().slice(0,10);
+                    const t = sunday.toISOString().slice(0,10);
+                    setFrom(f); setTo(t);
+                  }}
+                  className="px-2 py-1.5 rounded-md text-xs bg-gray-100 hover:bg-gray-200 text-gray-800"
+                  title="Set range to this week (Mon–Sun)"
+                >This Week</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+                    const last = new Date(now.getFullYear(), now.getMonth()+1, 0);
+                    const f = first.toISOString().slice(0,10);
+                    const t = last.toISOString().slice(0,10);
+                    setFrom(f); setTo(t);
+                  }}
+                  className="px-2 py-1.5 rounded-md text-xs bg-gray-100 hover:bg-gray-200 text-gray-800"
+                  title="Set range to this month"
+                >This Month</button>
               </div>
               {(from || to) && (
                 <button
@@ -1030,11 +1113,32 @@ const Reports = () => {
                 Export CSV (Excel)
               </button>
               <button
-                onClick={exportPDF}
+                onClick={() => { if (singleDay) { exportPDFForRange(singleDay, singleDay); } else { exportPDF(); } }}
                 className="inline-flex items-center px-3 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700"
               >
-                Print PDF
+                Print PDF (by Date)
               </button>
+              <div className="relative flex items-center gap-2">
+                <label className="text-sm text-gray-600">Single Day</label>
+                <input
+                  type="date"
+                  value={singleDay}
+                  onChange={(e)=>setSingleDay(e.target.value)}
+                  className="px-3 py-2 rounded-md bg-gray-100 text-gray-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <button type="button" onClick={()=>setShowSingleCal(v=>!v)} className="px-2 py-1 text-xs rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800">Calendar</button>
+                {showSingleCal && (
+                  <div className="absolute z-20 top-full mt-2 left-0 bg-white border border-gray-200 rounded-md p-2 shadow">
+                    <CalendarGrid
+                      year={viewYear}
+                      month={viewMonth}
+                      from={singleDay}
+                      to={singleDay}
+                      onPick={(d)=>{ setSingleDay(d); setShowSingleCal(false); }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

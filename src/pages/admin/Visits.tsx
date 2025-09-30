@@ -80,6 +80,8 @@ const Visits = () => {
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientShort | null>(null);
+  // Search bar for Patients tab table
+  const [patientsListSearch, setPatientsListSearch] = useState('');
 
   const [currentVisit, setCurrentVisit] = useState<Partial<Visit>>({
     patient: undefined,
@@ -1292,8 +1294,17 @@ const Visits = () => {
       {/* Tab content: Patients list */}
       {!showVisitForm && !paymentVisit && activeTab === 'patients' && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <h3 className="text-lg font-medium text-gray-900">Patients</h3>
+            <div className="relative">
+              <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={patientsListSearch}
+                onChange={(e)=>setPatientsListSearch(e.target.value)}
+                placeholder="Search patients by name, ID or phone"
+                className="w-64 pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+            </div>
           </div>
           <div className="overflow-x-auto">
             {patientsLoading ? (
@@ -1310,6 +1321,15 @@ const Visits = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {patients
+                    .filter(p => {
+                      const q = (patientsListSearch||'').trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (p.fullName||'').toLowerCase().includes(q) ||
+                        (p.patientNumber||'').toLowerCase().includes(q) ||
+                        (p.phone||'').toLowerCase().includes(q)
+                      );
+                    })
                     .slice()
                     .sort((a,b) => Number(b.id) - Number(a.id))
                     .map(p => (

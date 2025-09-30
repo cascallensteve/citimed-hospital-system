@@ -79,6 +79,8 @@ const Pharmacy = () => {
     (user as any)?.permission === 'over-the-counter' ||
     (user as any)?.permission === 'pharmacy'
   );
+  // Only superadmins can see money values
+  const canViewMoney = user?.role === 'superadmin';
 
   // Redirect unauthenticated users to login
   const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || '') : '';
@@ -345,9 +347,9 @@ const Pharmacy = () => {
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.quantity}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${batch}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.supplier_name || '-'}</td>
-        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${charges.toFixed(2)}</td>
-        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${paid.toFixed(2)}</td>
-        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${balance.toFixed(2)}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${canViewMoney ? charges.toFixed(2) : '—'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${canViewMoney ? paid.toFixed(2) : '—'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${canViewMoney ? balance.toFixed(2) : '—'}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.purchase_date ? new Date(c.purchase_date).toLocaleDateString() : '-'}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${c.expiry_date ? new Date(c.expiry_date).toLocaleDateString() : '-'}</td>
       </tr>`;
@@ -433,8 +435,11 @@ const Pharmacy = () => {
 
   const totalInventoryValue = items.reduce((sum, item) => sum + ((item.purchaseCost || 0) * item.quantity), 0);
 
-  // Currency formatter for Kenyan Shillings
-  const formatKES = (value: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(value || 0);
+  // Currency formatter for Kenyan Shillings (masked for non-superadmin)
+  const formatKES = (value: number) => {
+    if (!canViewMoney) return '—';
+    return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(value || 0);
+  };
 
   // Helper to open native date picker for inputs by id
   const openDatePicker = (id: string) => {
@@ -1065,7 +1070,7 @@ const Pharmacy = () => {
       <tr>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).itemCount}</td>
-        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).totalAmount}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${canViewMoney ? (s as any).totalAmount : '—'}</td>
         <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(s as any).timestamp ? new Date((s as any).timestamp).toLocaleString() : '-'}</td>
       </tr>
     `).join('');
