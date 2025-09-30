@@ -104,6 +104,7 @@ const Visits = () => {
   const [showConfirmPayment, setShowConfirmPayment] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [showPostPaymentPrompt, setShowPostPaymentPrompt] = useState(false);
+  const [hidePaymentForm, setHidePaymentForm] = useState(false);
   // Additional fields surfaced in UI (optional, not required by payment endpoint)
   // Removed extra fields from payment step per requirements
   // Anonymous visit mode state
@@ -160,6 +161,23 @@ const Visits = () => {
     setCurrentVisit(prev => ({ ...prev, [field]: value }));
   };
 
+  // Derive the display name for the logged-in user (admin) for receipts
+  const getUserDisplayName = (): string => {
+    const u: any = user || {};
+    const first = (u.first_name || u.firstName || '').toString().trim();
+    const last = (u.last_name || u.lastName || '').toString().trim();
+    const combined = [first, last].filter(Boolean).join(' ').trim();
+    if (combined) return combined;
+    return (
+      u.full_name ||
+      u.fullName ||
+      u.name ||
+      u.username ||
+      u.email ||
+      'Admin'
+    ).toString();
+  };
+
   // Print a receipt for a specific visit from the list actions
   const printVisitReceiptFor = (v: Visit) => {
     const fmtKES = (val: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(val || 0);
@@ -169,8 +187,7 @@ const Visits = () => {
     const patientName = resolvePatientName(Number(v.patient)) || (v.patientName || '');
     const patientPhone = resolvePatientPhone(Number(v.patient)) || '';
     const patientNum = resolvePatientNumber(Number(v.patient)) || (v.patientNumber || '');
-    const servedByRaw = (user as any)?.full_name ?? (user as any)?.fullName ?? (user as any)?.name ?? (user as any)?.username ?? 'Admin';
-    const servedBy = String(servedByRaw).trim();
+    const servedBy = getUserDisplayName();
     const content = `
       <div class="header">
         <div class="title">Citimed - Hospital</div>
@@ -217,7 +234,7 @@ const Visits = () => {
     const patientName = resolvePatientName(Number(paymentVisit.patient)) || (paymentVisit.patientName || '');
     const patientPhone = resolvePatientPhone(Number(paymentVisit.patient)) || '';
     const patientNum = resolvePatientNumber(Number(paymentVisit.patient)) || (paymentVisit.patientNumber || '');
-    const servedBy = ((user as any)?.fullName || (user as any)?.name || (user as any)?.username || 'Admin') as string;
+    const servedBy = getUserDisplayName();
     const content = `
       <div class="header">
         <div class="title">Citimed - Hospital</div>
@@ -226,7 +243,7 @@ const Visits = () => {
         <div class="muted">Visit Receipt #${paymentVisit.id || ''}</div>
       </div>
       <div class="section">
-        <div class="row"><span class="label">Patient:</span><span class="value">${patientNum ? `${patientNum} - ` : ''}${patientName}</span></div>
+        <div class="row"><span class="label">Patient:</span><span class="value">${patientName}</span></div>
         <div class="row"><span class="label">Date:</span><span class="value">${paymentVisit.timestamp ? new Date(paymentVisit.timestamp).toLocaleString() : new Date().toLocaleString()}</span></div>
       </div>
       <div class="hr"></div>
@@ -390,8 +407,9 @@ const Visits = () => {
       // setPaymentPrescription('');
       // setPaymentCharges('');
 
-      // Prompt user to print. Hide the transient success overlay.
+      // Prompt user to print. Hide the transient success overlay and payment form UI.
       setShowPaymentSuccess(false);
+      setHidePaymentForm(true);
       setShowPostPaymentPrompt(true);
     } catch (e) {
       toast.error(cleanErrorText((e as Error).message));
@@ -1067,6 +1085,13 @@ const Visits = () => {
                 e.preventDefault();
                 setShowPostPaymentPrompt(false);
                 printVisitReceipt();
+                // After printing, close payment flow and go to Visits list
+                setHidePaymentForm(false);
+                setPaymentVisit(null);
+                setShowVisitForm(false);
+                setActiveTab('visits');
+                const el = document.getElementById('recent-visits');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }
             }}
           >
@@ -1078,14 +1103,32 @@ const Visits = () => {
             <div className="flex flex-wrap gap-2 justify-end">
               <button
                 autoFocus
-                onClick={() => { setShowPostPaymentPrompt(false); printVisitReceipt(); }}
+                onClick={() => {
+                  setShowPostPaymentPrompt(false);
+                  printVisitReceipt();
+                  // After printing, close payment flow and go to Visits list
+                  setHidePaymentForm(false);
+                  setPaymentVisit(null);
+                  setShowVisitForm(false);
+                  setActiveTab('visits');
+                  const el = document.getElementById('recent-visits');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-medium"
                 title="Press Enter to print"
               >
                 Print Receipt
               </button>
               <button
-                onClick={() => { setShowPostPaymentPrompt(false); setPaymentVisit(null); setShowVisitForm(false); }}
+                onClick={() => {
+                  setShowPostPaymentPrompt(false);
+                  setHidePaymentForm(false);
+                  setPaymentVisit(null);
+                  setShowVisitForm(false);
+                  setActiveTab('visits');
+                  const el = document.getElementById('recent-visits');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
               >
                 Close Payment
@@ -1312,7 +1355,7 @@ const Visits = () => {
       )}
 
       {/* Payment form after creating a visit */}
-      {paymentVisit && (
+      {paymentVisit && !hidePaymentForm && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-blue-100">
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <h3 className="text-lg font-medium text-gray-900">Step 2: Payment for Visit #{paymentVisit.id}</h3>
