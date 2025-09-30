@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import api, { type PharmacySale, type ConsignmentInventory } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useDataCache } from '../../context/DataCacheContext';
 
 // Simple inline calendar grid for picking a date (YYYY-MM-DD)
 function CalendarGrid(props: {
@@ -99,6 +100,7 @@ const Reports = () => {
   const [totalPendingBalance, setTotalPendingBalance] = useState<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const { user } = useAuth();
+  const { visits: cachedVisits, sales: cachedSales, consignments: cachedConsignments, patients: cachedPatients, pharmacyItems: cachedItems, loaded: cacheLoaded } = useDataCache();
 
   // Permission guard: Outdoor Admins should not access Reports
   const perm = (user as any)?.permission as 'out-door-patient' | 'over-the-counter' | undefined;
@@ -110,6 +112,21 @@ const Reports = () => {
   const [patientsMap, setPatientsMap] = useState<Record<number, string>>({});
   // Pharmacy item name resolution for sales table
   const [itemsMap, setItemsMap] = useState<Record<number, string>>({});
+
+  // Hydrate maps from cache when available (faster initial load)
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    if (Object.keys(patientsMap).length === 0 && Array.isArray(cachedPatients) && cachedPatients.length > 0) {
+      const map: Record<number, string> = {};
+      cachedPatients.forEach(p => { const id = Number(p.id); if (id && p.fullName) map[id] = p.fullName; });
+      setPatientsMap(map);
+    }
+    if (Object.keys(itemsMap).length === 0 && Array.isArray(cachedItems) && cachedItems.length > 0) {
+      const map: Record<number, string> = {};
+      (cachedItems as any[]).forEach((it: any) => { const id = Number(it?.id); const name = it?.name || ''; if (id && name) map[id] = name; });
+      setItemsMap(map);
+    }
+  }, [cacheLoaded]);
 
   // Minimal auth fetch (tries Bearer then Token)
   const authFetch = async (url: string, init?: RequestInit) => {
@@ -257,6 +274,39 @@ const Reports = () => {
       setTableLoading(true);
       setError('');
       try {
+        // For no range: hydrate from global cache to avoid network
+        if (!hasRange && cacheLoaded) {
+          if (tab === 'visits' && Array.isArray(cachedVisits) && cachedVisits.length > 0) {
+            if (!cancelled) {
+              setVisits(cachedVisits);
+              setLoadedTabs(prev => ({ ...prev, [tab]: true }));
+              setLastRangeByTab(prev => ({ ...prev, [tab]: rangeKey }));
+              setPage(1);
+              setTableLoading(false);
+              return;
+            }
+          }
+          if (tab === 'sales' && Array.isArray(cachedSales) && cachedSales.length > 0) {
+            if (!cancelled) {
+              setSales(cachedSales as any);
+              setLoadedTabs(prev => ({ ...prev, [tab]: true }));
+              setLastRangeByTab(prev => ({ ...prev, [tab]: rangeKey }));
+              setPage(1);
+              setTableLoading(false);
+              return;
+            }
+          }
+          if (tab === 'consignments' && Array.isArray(cachedConsignments) && cachedConsignments.length > 0) {
+            if (!cancelled) {
+              setConsignments(cachedConsignments as any);
+              setLoadedTabs(prev => ({ ...prev, [tab]: true }));
+              setLastRangeByTab(prev => ({ ...prev, [tab]: rangeKey }));
+              setPage(1);
+              setTableLoading(false);
+              return;
+            }
+          }
+        }
         if (tab === 'visits') {
           const { visits } = await api.visits.all();
           const arr = Array.isArray(visits) ? visits : [];
@@ -346,6 +396,21 @@ const Reports = () => {
       const tasks = others
         .filter(t => !(loadedTabs[t] && lastRangeByTab[t] === rangeKey))
         .map((t) => (async () => {
+          // Use cache when no range
+          if (!hasRange && cacheLoaded) {
+            if (t === 'visits' && Array.isArray(cachedVisits) && cachedVisits.length > 0) {
+              if (!cancelled) { setVisits(cachedVisits); setLoadedTabs(prev => ({ ...prev, [t]: true })); setLastRangeByTab(prev => ({ ...prev, [t]: rangeKey })); }
+              return;
+            }
+            if (t === 'sales' && Array.isArray(cachedSales) && cachedSales.length > 0) {
+              if (!cancelled) { setSales(cachedSales as any); setLoadedTabs(prev => ({ ...prev, [t]: true })); setLastRangeByTab(prev => ({ ...prev, [t]: rangeKey })); }
+              return;
+            }
+            if (t === 'consignments' && Array.isArray(cachedConsignments) && cachedConsignments.length > 0) {
+              if (!cancelled) { setConsignments(cachedConsignments as any); setLoadedTabs(prev => ({ ...prev, [t]: true })); setLastRangeByTab(prev => ({ ...prev, [t]: rangeKey })); }
+              return;
+            }
+          }
           if (t === 'visits') {
             const { visits } = await api.visits.all();
             const arr = Array.isArray(visits) ? visits : [];

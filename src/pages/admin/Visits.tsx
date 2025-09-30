@@ -11,6 +11,7 @@ import {
   PrinterIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
+import { useDataCache } from '../../context/DataCacheContext';
 
 interface Visit {
   id: string;
@@ -72,6 +73,7 @@ const Visits = () => {
 
   const [visits, setVisits] = useState<Visit[]>([]);
   const { user } = useAuth();
+  const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, loaded: cacheLoaded } = useDataCache();
 
   // Patients for linking visits
   const [patients, setPatients] = useState<PatientShort[]>([]);
@@ -570,6 +572,8 @@ const Visits = () => {
           : (resolvePatientName(v.patient) || v.patientName),
       }));
       setVisits(mapped);
+      // Update global cache with raw visits from API
+      try { setCachedVisits(arr); } catch {}
       // Reset to first page on reload
       setPage(1);
       // Attempt to resolve any missing patient names via patient-detail endpoint (best-effort)
@@ -701,14 +705,48 @@ const Visits = () => {
 
   // removed unused exportAllVisitsPdf
 
-  // Load all visits on mount
+  // Hydrate from cache if available; otherwise fetch
   useEffect(() => {
+    if (!cacheLoaded) return;
+    if (Array.isArray(cachedVisits) && cachedVisits.length > 0) {
+      try {
+        const mapped = cachedVisits.map(mapApiVisitToDisplay).map(v => ({
+          ...v,
+          patientName: v.patientName && !/^Patient #/i.test(v.patientName)
+            ? v.patientName
+            : (resolvePatientName(v.patient) || v.patientName),
+        }));
+        setVisits(mapped);
+        setPage(1);
+        setLoading(false);
+        return;
+      } catch {}
+    }
+    // No cache -> fetch
     loadVisits();
-  }, []);
+  }, [cacheLoaded]);
 
-  // Load patients on mount for Add Visit selection
+  // Load patients on mount for Add Visit selection (hydrate from cache first)
   useEffect(() => {
     (async () => {
+      if (!cacheLoaded) return;
+      // Use cached patients if present
+      if (Array.isArray(cachedPatients) && cachedPatients.length > 0) {
+        setPatients(cachedPatients.map(p => ({
+          id: p.id,
+          fullName: p.fullName,
+          phone: p.phone || '',
+          patientNumber: p.patientNumber,
+          type: p.type,
+          age: p.age,
+          gender: (p.gender as any),
+          location: p.location,
+          registeredAt: p.registeredAt,
+        })));
+        setPatientsLoading(false);
+        return;
+      }
+      // Fallback to fetch
       setPatientsLoading(true);
       try {
         const base = getApiBase();
@@ -725,32 +763,21 @@ const Visits = () => {
           const fallback = nameFromPair || nameSingle || (p?.email ? String(p.email).split('@')[0] : '') || `Patient #${p?.id ?? ''}`;
           const phone = p?.phone_no ?? p?.phone ?? p?.phoneNumber ?? '';
           const fullPatNum = p?.patient_number ?? p?.patientNumber ?? (p?.id ? `CIT-${new Date().getFullYear()}-${String(p.id).padStart(3,'0')}` : undefined);
-          // Extract simple number from patient number
           const patNum = fullPatNum && fullPatNum.includes('CIT-') ? fullPatNum.split('-').pop() : fullPatNum;
           const age = typeof p?.age === 'string' ? parseFloat(p.age) : (typeof p?.age === 'number' ? p.age : undefined);
           const gender = p?.gender ?? undefined;
           const location = p?.location ?? undefined;
           const registeredAt = p?.created_at || p?.date_created || p?.createdAt || p?.timestamp || '';
-          return {
-            id: idStr,
-            fullName: fallback,
-            phone,
-            patientNumber: patNum,
-            type: p?.patient_type ?? p?.type,
-            age,
-            gender,
-            location,
-            registeredAt,
-          } as PatientShort;
+          return { id: idStr, fullName: fallback, phone, patientNumber: patNum, type: p?.patient_type ?? p?.type, age, gender, location, registeredAt } as PatientShort;
         });
         setPatients(mapped);
       } catch (_) {
-        // ignore for now; visits can still function
+        // ignore
       } finally {
         setPatientsLoading(false);
       }
     })();
-  }, []);
+  }, [cacheLoaded]);
 
   // After patients load, reconcile visit patient names to exact names
   useEffect(() => {

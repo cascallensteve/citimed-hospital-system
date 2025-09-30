@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
+import { useDataCache } from '../../context/DataCacheContext';
 
 type ApiItem = {
   id: number;
@@ -53,6 +54,7 @@ interface Sale {
 
 const Pharmacy = () => {
   const { user } = useAuth();
+  const { pharmacyItems: cachedItems, setPharmacyItems: setCachedItems, sales: cachedSales, setSales: setCachedSales, consignments: cachedConsignments, setConsignments: setCachedConsignments, loaded: cacheLoaded } = useDataCache();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'consignments'>('inventory');
   const [showAddItemForm, setShowAddItemForm] = useState(false);
@@ -420,7 +422,7 @@ const Pharmacy = () => {
           const res = await authFetch(u, { method: 'GET' });
           const data = await res.json().catch(() => ({} as any));
           const arr: any[] = Array.isArray(data?.inventories) ? data.inventories : [];
-          if (res.ok) { setConsignments(arr); return; }
+          if (res.ok) { setConsignments(arr); try { setCachedConsignments(arr); } catch {} return; }
         } catch { /* try next */ }
       }
       setConsignments([]);
@@ -450,9 +452,32 @@ const Pharmacy = () => {
     }
   };
 
-  // Fetch pharmacy items from backend and map to UI shape
+  // Fetch pharmacy items from backend and map to UI shape, with cache hydration
   useEffect(() => {
-    const fetchItems = async () => {
+    const hydrateOrFetch = async () => {
+      if (!cacheLoaded) return;
+      // Hydrate from cache
+      if (Array.isArray(cachedItems) && cachedItems.length > 0) {
+        const apiItems: ApiItem[] = cachedItems as any;
+        const mapped: PharmacyItem[] = (apiItems || []).map((it) => ({
+          id: String(it.id),
+          name: it.name,
+          quantity: Math.max(0, parseInt(String((it as any).quantity || '0')) || 0),
+          supplierName: (it as any).supplier_name || '',
+          purchaseCost: typeof (it as any).purchase_cost === 'number' ? (it as any).purchase_cost : Number((it as any).purchase_cost || 0) || 0,
+          paymentType: (it as any).payment_type || undefined,
+          purchaseDate: (it as any).purchase_date || undefined,
+          expiryDate: (it as any).expiry_date || undefined,
+          unitName: (it as any).unit_name || '',
+          unitPrice: Number((it as any).unit_price ?? 0) || 0,
+          discount: Number((it as any).discount ?? 0) || 0,
+          salesInstructions: (it as any).sales_instructions || '',
+          dateCreated: (it as any).date_created || (it as any).timestamp || '',
+        }));
+        setItems(mapped);
+        return;
+      }
+      // Fetch
       try {
         const base = getApiBase();
         const res = await authFetch(`${base}/pharmacy/all-items`, { method: 'GET' });
@@ -474,15 +499,23 @@ const Pharmacy = () => {
           dateCreated: (it as any).date_created || (it as any).timestamp || '',
         }));
         setItems(mapped);
+        try { setCachedItems(apiItems as any); } catch {}
       } catch (e) {
         // ignore
       }
     };
-    fetchItems();
-  }, []);
+    hydrateOrFetch();
+  }, [cacheLoaded]);
 
-  // Fetch all consignments on mount
-  useEffect(() => { loadConsignments(); }, []);
+  // Fetch all consignments on mount with cache hydration
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    if (Array.isArray(cachedConsignments) && cachedConsignments.length > 0) {
+      setConsignments(cachedConsignments as any);
+      return;
+    }
+    loadConsignments();
+  }, [cacheLoaded]);
 
   const openSaleDetail = async (saleId: number) => {
     try {
@@ -647,15 +680,12 @@ const Pharmacy = () => {
     win.document.close();
   };
 
-  // Fetch pharmacy sales from backend
+  // Fetch pharmacy sales from backend with cache hydration
   useEffect(() => {
     const fetchSales = async () => {
-      try {
-        const base = getApiBase();
-        let res = await authFetch(`${base}/pharmacy/all-sales`, { method: 'GET' });
-        if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/pharmacy/all-sales/`, { method: 'GET' });
-        const data = await res.json().catch(() => ({} as any));
-        const apiSales: any[] = (data && (data.items || data.data || [])) as any[];
+      if (!cacheLoaded) return;
+      // Hydrate from cache first
+      const hydrate = (apiSales: any[]) => {
         const mapped: Sale[] = (apiSales || []).map((s) => {
           const parsedTotal = (() => {
             const t = (s.total_amount ?? '').toString();
@@ -685,12 +715,25 @@ const Pharmacy = () => {
           return (parseInt(b.id) || 0) - (parseInt(a.id) || 0);
         });
         setSales(sorted);
+      };
+      try {
+        if (Array.isArray(cachedSales) && cachedSales.length > 0) {
+          hydrate(cachedSales as any);
+          return;
+        }
+        const base = getApiBase();
+        let res = await authFetch(`${base}/pharmacy/all-sales`, { method: 'GET' });
+        if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/pharmacy/all-sales/`, { method: 'GET' });
+        const data = await res.json().catch(() => ({} as any));
+        const apiSales: any[] = (data && (data.items || data.data || [])) as any[];
+        hydrate(apiSales);
+        try { setCachedSales(apiSales as any); } catch {}
       } catch {
         // keep empty sales on error
       }
     };
     fetchSales();
-  }, []);
+  }, [cacheLoaded]);
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();

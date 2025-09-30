@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useDataCache } from '../../context/DataCacheContext';
 
 // Prefer explicit API base URL from env in both dev and prod; fallback to proxy in dev
 const getApiBase = () => {
@@ -36,6 +37,7 @@ interface Patient {
 
 const Patients = () => {
   const navigate = useNavigate();
+  const { patients: cachedPatients, setPatients: setCachedPatients, loaded: cacheLoaded } = useDataCache();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchBy, setSearchBy] = useState<'name' | 'number' | 'phone'>('name');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -47,6 +49,15 @@ const Patients = () => {
   // Pagination
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  // Safely format various date strings (ISO or already formatted) for display
+  const formatDate = (value?: string) => {
+    const v = (value || '').toString();
+    if (!v) return '-';
+    const t = Date.parse(v);
+    if (Number.isNaN(t)) return v; // keep original if not ISO-parsable
+    return new Date(t).toLocaleDateString();
+  };
 
   const [newPatient, setNewPatient] = useState({
     name: '',
@@ -355,17 +366,33 @@ const Patients = () => {
       if (backend && typeof backend === 'string' && backend.trim()) return backend.trim();
       return `CIT-${new Date().getFullYear()}-${String(apiP?.id ?? '').padStart(3, '0')}`;
     })();
-    const createdTs = apiP?.created_at || apiP?.date_created || apiP?.createdAt || apiP?.timestamp || '';
+    const createdTs = (
+      apiP?.created_at || apiP?.date_created || apiP?.createdAt || apiP?.timestamp ||
+      apiP?.created || apiP?.date || apiP?.dateRegistered || apiP?.date_registered ||
+      apiP?.registered_at || apiP?.registeredAt || ''
+    );
+    // Robust fallbacks for name and phone
+    const emailLocal = (() => {
+      const e = (apiP?.email || '').toString();
+      return e.includes('@') ? e.split('@')[0] : '';
+    })();
+    const fullName = (
+      apiP?.name || apiP?.full_name || apiP?.fullName ||
+      `${apiP?.first_name ?? ''} ${apiP?.last_name ?? ''}`.trim() ||
+      emailLocal || `Patient #${apiP?.id ?? ''}`
+    ).toString();
+    const phone = (apiP?.phone_no ?? apiP?.phone ?? apiP?.phoneNumber ?? '').toString();
     return {
       id: String(apiP?.id ?? ''),
       patientNumber: extractPatientNumber(fullPatientNumber),
-      fullName: (apiP?.name || `${apiP?.first_name ?? ''} ${apiP?.last_name ?? ''}`.trim() || '').toString(),
+      fullName,
       age: typeof apiP?.age === 'string' ? Number(apiP.age) : (apiP?.age ?? 0),
       gender: (apiP?.gender as any) ?? 'Other',
-      phoneNumber: apiP?.phone_no ?? '',
+      phoneNumber: phone,
       location: apiP?.location ?? '',
       patientType,
-      registrationDate: createdTs ? new Date(createdTs).toLocaleDateString() : '',
+      // Keep raw timestamp string; format at render time to avoid Invalid Date
+      registrationDate: createdTs ? String(createdTs) : '',
       additionalInfo: apiP?.notes ?? undefined,
     };
   };
@@ -384,9 +411,10 @@ const Patients = () => {
     return res;
   };
 
-  // Load patients on mount and optionally open Add form via ?add=1
+  // Load patients on mount and optionally open Add form via ?add=1, with cache hydration
   useEffect(() => {
     (async () => {
+      if (!cacheLoaded) return;
       setLoading(true);
       try {
         // Open Add Patient form if requested via query param
@@ -396,13 +424,36 @@ const Patients = () => {
           setShowAddForm(true);
         }
 
+        // Hydrate from cache
+        if (Array.isArray(cachedPatients) && cachedPatients.length > 0) {
+          setPatients(cachedPatients.map(mapApiPatientToDisplay));
+          setPage(1);
+          return;
+        }
+
+        // Fallback: fetch
         const base = getApiBase();
         let res = await authFetch(`${base}/patients/all-patients`);
         if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/patients/all-patients/`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((data && (data.message || data.error || data.detail)) || `Failed to load patients (status ${res.status})`);
         const rows: any[] = Array.isArray(data?.Patients) ? data.Patients : [];
-        setPatients(rows.map(mapApiPatientToDisplay));
+        const mapped = rows.map(mapApiPatientToDisplay);
+        setPatients(mapped);
+        // Push to cache as CachedPatient[]
+        try {
+          setCachedPatients(mapped.map(p => ({
+            id: p.id,
+            fullName: p.fullName,
+            phone: p.phoneNumber,
+            patientNumber: p.patientNumber,
+            type: p.patientType as any,
+            age: p.age,
+            gender: p.gender as any,
+            location: p.location,
+            registeredAt: p.registrationDate,
+          })) as any);
+        } catch {}
         setPage(1);
       } catch (e) {
         toast.error((e as Error).message);
@@ -410,7 +461,7 @@ const Patients = () => {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [cacheLoaded]);
 
   // Reset to first page when search changes
   useEffect(() => {
@@ -855,7 +906,7 @@ const Patients = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 flex items-center">
                     <CalendarDaysIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    {new Date(patient.registrationDate).toLocaleDateString()}
+                    {formatDate(patient.registrationDate)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
