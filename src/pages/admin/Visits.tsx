@@ -103,6 +103,7 @@ const Visits = () => {
   const [creatingPayment, setCreatingPayment] = useState(false);
   const [showConfirmPayment, setShowConfirmPayment] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [showPostPaymentPrompt, setShowPostPaymentPrompt] = useState(false);
   // Additional fields surfaced in UI (optional, not required by payment endpoint)
   // Removed extra fields from payment step per requirements
   // Anonymous visit mode state
@@ -389,15 +390,9 @@ const Visits = () => {
       // setPaymentPrescription('');
       // setPaymentCharges('');
 
-      // Show centered success, then close payment section and scroll to recent visits
-      setShowPaymentSuccess(true);
-      setTimeout(() => {
-        setShowPaymentSuccess(false);
-        setPaymentVisit(null);
-        setShowVisitForm(false);
-        const el = document.getElementById('recent-visits');
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 1400);
+      // Prompt user to print. Hide the transient success overlay.
+      setShowPaymentSuccess(false);
+      setShowPostPaymentPrompt(true);
     } catch (e) {
       toast.error(cleanErrorText((e as Error).message));
     } finally {
@@ -1059,6 +1054,44 @@ const Visits = () => {
             </div>
           </div>
           <div className="relative h-2 bg-gradient-to-r from-blue-500/60 via-indigo-500/60 to-purple-500/60" />
+        </div>
+      )}
+
+      {/* Post-Payment Print Prompt */}
+      {showPostPaymentPrompt && paymentVisit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div
+            className="bg-white rounded-lg p-6 w-full max-w-md mx-4"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                setShowPostPaymentPrompt(false);
+                printVisitReceipt();
+              }
+            }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-900">Payment Saved</h3>
+              <button onClick={() => setShowPostPaymentPrompt(false)} className="px-2 py-1.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Close</button>
+            </div>
+            <p className="text-sm text-gray-700 mb-4">Would you like to print the receipt now?</p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                autoFocus
+                onClick={() => { setShowPostPaymentPrompt(false); printVisitReceipt(); }}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-medium"
+                title="Press Enter to print"
+              >
+                Print Receipt
+              </button>
+              <button
+                onClick={() => { setShowPostPaymentPrompt(false); setPaymentVisit(null); setShowVisitForm(false); }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+              >
+                Close Payment
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1858,8 +1891,7 @@ const Visits = () => {
             </div>
             <div className="bg-gray-50 px-6 py-3 flex justify-end gap-3">
               <button onClick={() => setShowConfirmPayment(false)} className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800">Cancel</button>
-              <button onClick={printVisitReceipt} className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white">Print Receipt</button>
-              <button onClick={() => { setShowConfirmPayment(false); addPayment(); }} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white">Confirm & Save</button>
+              <button onClick={() => { setShowConfirmPayment(false); addPayment(); }} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white">Save Payment</button>
             </div>
           </div>
         </div>
