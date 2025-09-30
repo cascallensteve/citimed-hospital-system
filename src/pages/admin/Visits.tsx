@@ -899,9 +899,8 @@ const Visits = () => {
           charges: v.charges || (currentVisit.charges || ''),
         } as Visit;
         setVisits(prev => [enriched, ...prev]);
-        setPaymentVisit(enriched); // prompt payment next
-        setSelectedVisit(enriched);
-        setShowConfirmPayment(true); // show print option immediately
+        // Go straight to payment form; do not open details or confirm dialogs
+        setPaymentVisit(enriched);
         // Step 2 now only records payment
       }
       setShowVisitForm(false);
@@ -1487,14 +1486,13 @@ const Visits = () => {
               <div className="space-y-4">
                 <h4 className="text-lg font-medium text-gray-900">Lab Tests</h4>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Add Lab Tests (press Enter to auto-number)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Add Lab Tests (comma-separated)</label>
                   <textarea
                     value={currentVisit.lab_test || ''}
                     onChange={(e)=>handleInputChange('lab_test' as any, e.target.value)}
-                    onKeyDown={(e)=>onNumberedEnter('lab_test', e)}
                     rows={4}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="1. CBC\n2. LFTs\n3. ..."
+                    placeholder="CBC, LFTs, ..."
                   />
                   {currentVisit.lab_test && (
                     <div className="mt-1 text-right">
@@ -1535,14 +1533,13 @@ const Visits = () => {
               <div className="space-y-4">
                 <h4 className="text-lg font-medium text-gray-900">Prescriptions</h4>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Add Prescription Items (press Enter to auto-number)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Add Prescription Items (comma-separated)</label>
                   <textarea
                     value={currentVisit.prescription || ''}
                     onChange={(e)=>handleInputChange('prescription' as any, e.target.value)}
-                    onKeyDown={(e)=>onNumberedEnter('prescription', e)}
                     rows={4}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={"1. Amlodipine 10mg OD\n2. Paracetamol 1g TDS\n3. ..."}
+                    placeholder={"Amlodipine 10mg OD, Paracetamol 1g TDS, ..."}
                   />
                   {currentVisit.prescription && (
                     <div className="mt-1 text-right">
@@ -1751,7 +1748,19 @@ const Visits = () => {
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Lab Test</p>
-                      <p className="text-sm text-gray-800">{selectedVisit.lab_test || '—'}</p>
+                      {(() => {
+                        const items = String(selectedVisit.lab_test || '')
+                          .split(/\n|,/)
+                          .map(s => s.trim())
+                          .filter(Boolean);
+                        return items.length ? (
+                          <ul className="list-disc ml-5 text-sm text-gray-800">
+                            {items.map((it, idx) => (<li key={idx}>{it}</li>))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-gray-800">—</p>
+                        );
+                      })()}
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Lab Results</p>
@@ -1767,7 +1776,20 @@ const Visits = () => {
                     </div>
                     <div className="md:col-span-2">
                       <p className="text-xs text-gray-500">Prescription</p>
-                      <p className="text-sm text-gray-800">{selectedVisit.prescription || '—'}</p>
+                      {(() => {
+                        const base = selectedVisit.prescription || '';
+                        const items = String(base)
+                          .split(/\n|,/)
+                          .map(s => s.trim())
+                          .filter(Boolean);
+                        return items.length ? (
+                          <ul className="list-disc ml-5 text-sm text-gray-800">
+                            {items.map((it, idx) => (<li key={idx}>{it}</li>))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-gray-800">—</p>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
