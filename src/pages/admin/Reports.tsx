@@ -855,7 +855,7 @@ const Reports = () => {
         rows = filteredConsignments;
         headers = ['item_name','quantity','purchase_date','payment_type','expiry_date','supplier_name','purchase_cost'];
         labels = ['Item','Quantity','Purchase Date','Payment Type','Expiry','Supplier','Cost'];
-        filename = 'consignments_report.csv';
+        filename = 'inventories_report.csv';
       }
       const csv = toCSV(rows, headers, labels);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -886,7 +886,7 @@ const Reports = () => {
       labels = ['Customer','Item Name(s)','Date','Items (lines)','Units','Total'];
       rows = filteredSales;
     } else if (tab === 'consignments') {
-      title = 'Consignments Report';
+      title = 'Inventories Report';
       headers = ['item_name','quantity','purchase_date','payment_type','expiry_date','supplier_name','purchase_cost'];
       labels = ['Item','Quantity','Purchase Date','Payment Type','Expiry','Supplier','Cost'];
       rows = filteredConsignments;
@@ -1087,7 +1087,7 @@ const Reports = () => {
               <p className="text-2xl font-semibold text-gray-900">{consignmentsTotalQty}</p>
             </div>
             <div className="border rounded-lg p-4">
-              <p className="text-sm text-gray-500">Consignments</p>
+              <p className="text-sm text-gray-500">Inventories</p>
               <p className="text-2xl font-semibold text-gray-900">{filteredConsignments.length}</p>
             </div>
           </div>
@@ -1144,7 +1144,7 @@ const Reports = () => {
               className={`px-3 py-1.5 rounded-md text-sm ${tab === 'consignments' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
               onClick={() => setTab('consignments')}
             >
-              Consignments
+              Inventories
             </button>
             <button
               className={`px-3 py-1.5 rounded-md text-sm ${tab === 'balances' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
