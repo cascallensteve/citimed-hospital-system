@@ -1270,7 +1270,7 @@ const Visits = () => {
                   const charges = moneyToNumber(paymentVisit.charges);
                   const already = moneyToNumber(paymentVisit.paid);
                   const incoming = moneyToNumber(paymentAmount);
-                  const bal = Math.max(charges - already - incoming, 0);
+                  const bal = (charges - already - incoming);
                   return bal.toFixed(2);
                 })()}
               </div>
