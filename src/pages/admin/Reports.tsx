@@ -367,7 +367,53 @@ const Reports = () => {
             if (!cancelled) setConsignments(arr);
           }
         } else if (tab === 'balances') {
-          // Fetch all balances; endpoint returns total_pending_balance and a list of visits with balances
+          // Instant hydration from cached visits for no-range view
+          if (!hasRange && cacheLoaded && Array.isArray(cachedVisits) && cachedVisits.length > 0) {
+            const hydr = (cachedVisits as any[]).map(v => ({
+              id: String(v?.id ?? ''),
+              patient: v?.patient,
+              patient_name: v?.patient_name || v?.patientName || v?.name || '',
+              patient_number: v?.patient_number || v?.client_id || '',
+              timestamp: v?.timestamp || v?.date || v?.created_at || '',
+              charges: v?.charges ?? '',
+              total_paid: v?.paid ?? v?.total_paid ?? 0,
+              balance: v?.balance ?? (Number(v?.charges || 0) - Number(v?.paid || 0)),
+              diagnosis: v?.diagnosis ?? '',
+              diagnosis_type: v?.diagnosis_type ?? '',
+              prescription: v?.prescription ?? '',
+              complaints: v?.complaints ?? '',
+              history: v?.history ?? '',
+              allergies: v?.allergies ?? '',
+              physical_exam: v?.physical_exam ?? '',
+              lab_test: v?.lab_test ?? '',
+              lab_results: v?.lab_results ?? '',
+              imaging: v?.imaging ?? '',
+              transactions: Array.isArray(v?.transactions) ? v.transactions : [],
+            }));
+            if (!cancelled) {
+              setBalanceVisits(hydr);
+              const pending = hydr.reduce((s, it) => s + Number(it.balance || 0), 0);
+              setTotalPendingBalance(pending);
+              // Mark loaded immediately and stop spinner for snappy UX
+              setLoadedTabs(prev => ({ ...prev, [tab]: true }));
+              setLastRangeByTab(prev => ({ ...prev, [tab]: rangeKey }));
+              setPage(1);
+              setTableLoading(false);
+              // Fire-and-forget accurate refresh
+              (async () => {
+                try {
+                  const { total_pending_balance, visits } = await api.finance.visitsBalances();
+                  const arr = Array.isArray(visits) ? visits : [];
+                  if (!cancelled) {
+                    setBalanceVisits(arr);
+                    setTotalPendingBalance(Number(total_pending_balance || 0));
+                  }
+                } catch {}
+              })();
+              return;
+            }
+          }
+          // With range or no cache: fetch and await
           const { total_pending_balance, visits } = await api.finance.visitsBalances();
           const arr = Array.isArray(visits) ? visits : [];
           if (!cancelled) {
@@ -469,6 +515,46 @@ const Reports = () => {
               if (!cancelled) setConsignments(arr as any);
             }
           } else if (t === 'balances') {
+            if (!hasRange && cacheLoaded && Array.isArray(cachedVisits) && cachedVisits.length > 0) {
+              const hydr = (cachedVisits as any[]).map(v => ({
+                id: String(v?.id ?? ''),
+                patient: v?.patient,
+                patient_name: v?.patient_name || v?.patientName || v?.name || '',
+                patient_number: v?.patient_number || v?.client_id || '',
+                timestamp: v?.timestamp || v?.date || v?.created_at || '',
+                charges: v?.charges ?? '',
+                total_paid: v?.paid ?? v?.total_paid ?? 0,
+                balance: v?.balance ?? (Number(v?.charges || 0) - Number(v?.paid || 0)),
+                diagnosis: v?.diagnosis ?? '',
+                diagnosis_type: v?.diagnosis_type ?? '',
+                prescription: v?.prescription ?? '',
+                complaints: v?.complaints ?? '',
+                history: v?.history ?? '',
+                allergies: v?.allergies ?? '',
+                physical_exam: v?.physical_exam ?? '',
+                lab_test: v?.lab_test ?? '',
+                lab_results: v?.lab_results ?? '',
+                imaging: v?.imaging ?? '',
+                transactions: Array.isArray(v?.transactions) ? v.transactions : [],
+              }));
+              if (!cancelled) {
+                setBalanceVisits(hydr);
+                const pending = hydr.reduce((s, it) => s + Number(it.balance || 0), 0);
+                setTotalPendingBalance(pending);
+                // Fire-and-forget background refresh
+                (async () => {
+                  try {
+                    const { total_pending_balance, visits } = await api.finance.visitsBalances();
+                    const arr = Array.isArray(visits) ? visits : [];
+                    if (!cancelled) {
+                      setBalanceVisits(arr);
+                      setTotalPendingBalance(Number(total_pending_balance || 0));
+                    }
+                  } catch {}
+                })();
+                return;
+              }
+            }
             const { total_pending_balance, visits } = await api.finance.visitsBalances();
             const arr = Array.isArray(visits) ? visits : [];
             if (!cancelled) {

@@ -458,22 +458,24 @@ const Dashboard = () => {
         {/* Top Header with Date/Time and Mobile Menu */}
         <div className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {/* Mobile hamburger button inside header */}
               <button
                 type="button"
-                className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-md bg-transparent text-white hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
+                className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open menu"
               >
                 <MenuAlt2Icon className="h-6 w-6 text-white" />
               </button>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {isOverviewPage ? 'Dashboard Overview' : 'Citimed CMS'}
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                {isOverviewPage ? 'Welcome to Citimed Clinic Management System' : 'Manage your clinic operations'}
-              </p>
+              <div className="flex flex-col leading-tight">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {isOverviewPage ? 'Dashboard Overview' : 'Citimed CMS'}
+                </h1>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {isOverviewPage ? 'Welcome to Citimed Clinic Management System' : 'Manage your clinic operations'}
+                </p>
+              </div>
             </div>
             <div className="text-left sm:text-right">
               <div className="text-lg font-semibold text-gray-900 dark:text-white">
