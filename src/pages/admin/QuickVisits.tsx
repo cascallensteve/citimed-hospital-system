@@ -80,9 +80,6 @@ const QuickVisits = () => {
     </head>
     <body>
       ${content}
-      <div style="text-align:center; margin-top:12px;">
-        <button onclick="__doPrint()" style="padding:6px 10px; background:#2563eb; color:#fff; border:none; border-radius:6px;">Print</button>
-      </div>
     </body></html>`;
 
     // Try popup window first
