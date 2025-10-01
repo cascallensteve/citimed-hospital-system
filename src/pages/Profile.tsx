@@ -128,15 +128,6 @@ const Profile = () => {
           }
         }
       } catch {}
-      try {
-        if (createdEmail) {
-          await api.auth.resendVerificationOtp({ email: createdEmail });
-          toast.success('Admin added. Verification code sent.');
-        }
-      } catch {}
-      if (!createdEmail) {
-        toast.success('Admin added.');
-      }
     } catch (err) {
       toast.error((err as Error).message || 'Failed to create admin');
     } finally {

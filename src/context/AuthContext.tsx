@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 
@@ -30,6 +30,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  // Track recent resend attempts to avoid double-sends (per email)
+  const resendTrackerRef = useRef<Record<string, number>>({});
 
   // Normalize backend user role field(s) into our local union type
   const normalizeRole = (backendUser: any): 'admin' | 'superadmin' => {
@@ -131,7 +133,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const resendVerificationOtp = async (email: string) => {
-    await authApi.resendVerificationOtp({ email });
+    const key = (email || '').trim().toLowerCase();
+    const now = Date.now();
+    const last = resendTrackerRef.current[key] || 0;
+    // Throttle duplicate sends within 3 seconds
+    if (now - last < 3000) return;
+    resendTrackerRef.current[key] = now;
+    try {
+      await authApi.resendVerificationOtp({ email });
+    } finally {
+      // allow subsequent sends after window
+      setTimeout(() => {
+        // Keep only if not updated to a newer timestamp
+        if (resendTrackerRef.current[key] === now) delete resendTrackerRef.current[key];
+      }, 3100);
+    }
   };
 
   const logout = () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
@@ -17,6 +17,7 @@ const VerifyEmail = () => {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const resendLock = useRef(false);
 
   const onVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +43,8 @@ const VerifyEmail = () => {
   };
 
   const onResend = async () => {
+    if (resendLock.current) return; // hard guard against rapid double-invokes
+    resendLock.current = true;
     setResending(true);
     try {
       await resendVerificationOtp(email);
@@ -50,6 +53,7 @@ const VerifyEmail = () => {
       toast.error((e as Error).message);
     } finally {
       setResending(false);
+      resendLock.current = false;
     }
   };
 
@@ -69,7 +73,7 @@ const VerifyEmail = () => {
           </div>
           <button type="submit" disabled={loading} className={`w-full py-2 rounded-md text-white ${loading?'bg-blue-400':'bg-blue-600 hover:bg-blue-700'}`}>{loading?'Verifying…':'Verify Email'}</button>
         </form>
-        <button onClick={onResend} disabled={resending} className="w-full mt-3 py-2 rounded-md border text-blue-700 border-blue-200 dark:text-blue-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-gray-700">{resending?'Sending…':'Resend code'}</button>
+        <button type="button" onClick={() => { if (!resending) onResend(); }} disabled={resending} className="w-full mt-3 py-2 rounded-md border text-blue-700 border-blue-200 dark:text-blue-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-gray-700">{resending?'Sending…':'Resend code'}</button>
         <p className="text-sm text-gray-600 dark:text-gray-300 mt-4 text-center"><Link to="/login" className="text-blue-600">Back to login</Link></p>
       </div>
     </div>

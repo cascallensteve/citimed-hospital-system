@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -462,11 +462,12 @@ const Dashboard = () => {
               {/* Mobile hamburger button inside header */}
               <button
                 type="button"
-                className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-0"
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open menu"
+                title="Open menu"
               >
-                <MenuAlt2Icon className="h-6 w-6 text-white" />
+                <MenuAlt2Icon className="h-7 w-7 text-gray-900 dark:text-white" />
               </button>
               <div className="flex flex-col leading-tight">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
