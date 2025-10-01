@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -334,7 +334,7 @@ const Dashboard = () => {
               <div className="flex items-center flex-shrink-0 px-6 mb-8">
                 <img src="/IMAGES/Logo.png" alt="Citimed" className="h-12 w-auto object-contain filter brightness-0 invert" />
                 <div className="ml-3">
-                  <h1 className="text-lg font-bold text-white">Citimed CMS</h1>
+                  <h1 className="text-lg font-bold text-white">CITIMED CLINIC</h1>
                   <p className="text-blue-200 text-xs">Admin Dashboard</p>
                 </div>
               </div>
@@ -399,7 +399,7 @@ const Dashboard = () => {
               <div className="flex items-center flex-shrink-0 px-6 mb-8">
                 <img src="/IMAGES/Logo.png" alt="Citimed" className="h-16 w-auto object-contain filter brightness-0 invert" />
                 <div className="ml-3">
-                  <h1 className="text-xl font-bold text-white">Citimed CMS</h1>
+                  <h1 className="text-xl font-bold text-white">CITIMED CMS</h1>
                   <p className="text-blue-200 text-sm">Admin Dashboard</p>
                 </div>
               </div>
@@ -470,7 +470,7 @@ const Dashboard = () => {
               </button>
               <div className="flex flex-col leading-tight">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {isOverviewPage ? 'Dashboard Overview' : 'Citimed CMS'}
+                  {isOverviewPage ? 'Dashboard Overview' : 'CITIMED CMS'}
                 </h1>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   {isOverviewPage ? 'Welcome to Citimed Clinic Management System' : 'Manage your clinic operations'}
@@ -678,3 +678,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
