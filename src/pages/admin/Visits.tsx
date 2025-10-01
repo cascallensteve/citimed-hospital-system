@@ -195,11 +195,13 @@ const Visits = () => {
     const patientPhone = resolvePatientPhone(Number(v.patient)) || '';
     const patientNum = resolvePatientNumber(Number(v.patient)) || (v.patientNumber || '');
     const servedBy = (v as any).uploader_name || (v as any).uploader_info || ((v as any).uploader ? `User #${(v as any).uploader}` : getUserDisplayName());
+    const receiptNo = `CCV${String(v.id || '').toString().padStart(3, '0')}`;
     const content = `
       <div class="header first">
         <div class="title">CITIMED CLINIC</div>
         <div class="muted">MAKONGENI - THIKA</div>
         <div class="muted"><em>SERVED BY:</em> ${servedBy}</div>
+        <div class="muted">RECEIPT NO: ${receiptNo}</div>
       </div>
       <div class="thick-hr"></div>
       <div class="section">
@@ -210,12 +212,11 @@ const Visits = () => {
       <div class="section">
         <table class="w-full">
           <thead>
-            <tr><th class="text-left">Item</th><th class="text-center">Qty</th><th class="right">Price</th></tr>
+            <tr><th class="text-left">Item</th><th class="right">Price</th></tr>
           </thead>
           <tbody>
             <tr>
               <td>Consultation</td>
-              <td class="text-center">1</td>
               <td class="right">${fmtKES(charges)}</td>
             </tr>
           </tbody>
@@ -242,13 +243,14 @@ const Visits = () => {
     const patientName = resolvePatientName(Number(paymentVisit.patient)) || (paymentVisit.patientName || '');
     const patientPhone = resolvePatientPhone(Number(paymentVisit.patient)) || '';
     const patientNum = resolvePatientNumber(Number(paymentVisit.patient)) || (paymentVisit.patientNumber || '');
-    const servedBy = getUserDisplayName();
+    const servedBy = (paymentVisit as any).uploader_name || (paymentVisit as any).uploader_info || getUserDisplayName();
+    const receiptNo = `CCV${String(paymentVisit.id || '').toString().padStart(3, '0')}`;
     const content = `
       <div class="header first">
         <div class="title">CITIMED CLINIC</div>
         <div class="muted">MAKONGENI - THIKA</div>
         <div class="muted"><em>SERVED BY:</em> ${servedBy}</div>
-        <div class="muted">VISIT RECEIPT #${paymentVisit.id || ''}</div>
+        <div class="muted">RECEIPT NO: ${receiptNo}</div>
       </div>
       <div class="thick-hr"></div>
       <div class="section">
@@ -259,12 +261,11 @@ const Visits = () => {
       <div class="section">
         <table class="w-full">
           <thead>
-            <tr><th class="text-left">Item</th><th class="text-center">Qty</th><th class="right">Price</th></tr>
+            <tr><th class="text-left">Item</th><th class="right">Price</th></tr>
           </thead>
           <tbody>
             <tr>
               <td>Consultation</td>
-              <td class="text-center">1</td>
               <td class="right">${fmtKES(charges)}</td>
             </tr>
           </tbody>
