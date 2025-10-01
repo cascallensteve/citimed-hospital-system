@@ -52,6 +52,119 @@ const QuickVisits = () => {
 
   useEffect(() => { loadAll(); }, []);
 
+  const fmtKES = (v: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(v || 0);
+  const openPrintWindow = (_: string, content: string) => {
+    const styles = `
+      <style>
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial; color:#111827; }
+        .title { font-size:38px; font-weight:700; }
+        .muted { color:#6b7280; font-size:29px; }
+        .header.first { text-align:center; margin-bottom:8px; font-weight:700; }
+        .header.first * { font-weight:700 !important; }
+        .thick-hr { height:3px; background:#111827; margin:10px 0; }
+        .section { margin:8px 0; }
+        .row { display:flex; justify-content:space-between; font-size:34px; }
+        .label { color:#6b7280; }
+        table { width:100%; border-collapse:collapse; font-size:34px; }
+        th, td { padding:6px 4px; }
+        th { color:#6b7280; font-weight:600; border-bottom:3px solid #111827; }
+        .right { text-align:right; }
+      </style>
+    `;
+    const html = `<html><head><title>Print</title>${styles}
+      <script>
+        function __doPrint(){ try { window.focus(); window.print(); } catch(e){} }
+        window.onload = function(){ setTimeout(__doPrint, 50); };
+        window.onafterprint = function(){ setTimeout(function(){ try{ window.close(); }catch(e){} }, 50); };
+      </script>
+    </head>
+    <body>
+      ${content}
+      <div style="text-align:center; margin-top:12px;">
+        <button onclick="__doPrint()" style="padding:6px 10px; background:#2563eb; color:#fff; border:none; border-radius:6px;">Print</button>
+      </div>
+    </body></html>`;
+
+    // Try popup window first
+    const w = window.open('', '_blank', 'width=480,height=640');
+    if (w) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.onload = () => {
+        setTimeout(() => { try { w.focus(); w.print(); } catch {} try { w.close(); } catch {} }, 50);
+      };
+      return;
+    }
+
+    // Fallback to hidden iframe if popups are blocked
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      toast.error('Unable to open print view.');
+      document.body.removeChild(iframe);
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    iframe.onload = () => {
+      setTimeout(() => {
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); } catch {}
+        try { document.body.removeChild(iframe); } catch {}
+      }, 50);
+    };
+  };
+
+  const printQuickVisit = (row: any) => {
+    const amountNum = Number(String(row?.amount || '').replace(/[^0-9.]/g, '')) || 0;
+    const servedBy = row?.uploader_name || row?.uploader_info || 'Admin';
+    const receiptNo = `CCQ${String(row?.id || '').toString().padStart(3, '0')}`;
+    const content = `
+      <div class="header first">
+        <div class="title">CITIMED CLINIC</div>
+        <div class="muted">MAKONGENI - THIKA</div>
+        <div class="muted"><em>SERVED BY:</em> ${servedBy}</div>
+        <div class="muted">RECEIPT NO: ${receiptNo}</div>
+      </div>
+      <div class="thick-hr"></div>
+      <div class="section">
+        <div class="row"><span class="label">Date:</span><span class="value">${new Date().toLocaleString()}</span></div>
+      </div>
+      <div class="thick-hr"></div>
+      <div class="section">
+        <table class="w-full">
+          <thead>
+            <tr><th class="text-left">Item</th><th class="right">Price</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Consultation</td>
+              <td class="right">${fmtKES(amountNum)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="thick-hr"></div>
+      <div class="section">
+        <div class="row"><span class="label">Paid</span><span class="value">${fmtKES(amountNum)}</span></div>
+        <div class="row"><span class="label">Balance</span><span class="value">${fmtKES(0)}</span></div>
+      </div>
+      <div class="thick-hr"></div>
+      <div class="section" style="text-align:center; padding-top:8px;">
+        <div class="muted">Wishing you a Quick recover</div>
+      </div>
+    `;
+    openPrintWindow(`quick-visit-${row?.id}-receipt`, content);
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) { toast.error('Fill in all fields'); return; }
@@ -188,8 +301,9 @@ const QuickVisits = () => {
                     <td className="px-4 py-2 text-sm text-gray-700">{row.amount}</td>
                     <td className="px-4 py-2 text-right text-sm">
                       <div className="inline-flex gap-2">
-                        <button onClick={()=>openDetail(row.id)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700">View</button>
-                        <button onClick={()=>setConfirmDel(row)} className="px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700">Delete</button>
+                        <button type="button" onClick={()=>openDetail(row.id)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700">View</button>
+                        <button type="button" onClick={()=>printQuickVisit(row)} className="px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">Print</button>
+                        <button type="button" onClick={()=>setConfirmDel(row)} className="px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700">Delete</button>
                       </div>
                     </td>
                   </tr>
