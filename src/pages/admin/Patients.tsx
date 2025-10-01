@@ -911,7 +911,7 @@ const Patients = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
                       <button
-                        onClick={() => openDetails(patient)}
+                        onClick={() => navigate(`/dashboard/admin/patients/${patient.id}`)}
                         className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-md"
                         title="View details"
                       >

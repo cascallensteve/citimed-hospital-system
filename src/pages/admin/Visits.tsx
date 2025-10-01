@@ -821,13 +821,36 @@ const Visits = () => {
     const shouldOpen = qs.get('add');
     if ((shouldOpen === '1' || shouldOpen === 'true') && !showVisitForm) {
       setShowVisitForm(true);
-      // Prefill patient from query params when available
+      // Prefill patient from query params when available (full enrichment)
       const pid = Number(qs.get('patient') || '');
       const pname = (qs.get('name') || '').toString();
+      const pnumber = (qs.get('patientNumber') || '').toString();
+      const pphone = (qs.get('phone') || '').toString();
+      const pageStr = (qs.get('age') || '').toString();
+      const pgender = (qs.get('gender') || '').toString();
+      const plocation = (qs.get('location') || '').toString();
+      const ptype = (qs.get('type') || '').toString();
+      const preg = (qs.get('registeredAt') || '').toString();
       if (pid) {
-        const resolvedName = pname || resolvePatientName(pid) || `Patient #${pid}`;
-        setSelectedPatient({ id: String(pid), fullName: resolvedName, phone: '', patientNumber: '', type: '' });
-        setPatientSearch(`${pid} - ${resolvedName}`);
+        const fallbackName = resolvePatientName(pid) || `Patient #${pid}`;
+        const resolvedName = pname || fallbackName;
+        const resolvedNumber = pnumber || resolvePatientNumber(pid) || String(pid);
+        const resolvedPhone = pphone || resolvePatientPhone(pid) || '';
+        const resolvedType = ptype || resolvePatientType(pid) || '';
+        const resolvedAge = pageStr ? Number(pageStr) : undefined;
+        const preselected = {
+          id: String(pid),
+          fullName: resolvedName,
+          phone: resolvedPhone,
+          patientNumber: resolvedNumber,
+          type: resolvedType,
+          age: typeof resolvedAge === 'number' && isFinite(resolvedAge) ? resolvedAge : undefined,
+          gender: pgender || undefined,
+          location: plocation || undefined,
+          registeredAt: preg || undefined,
+        } as PatientShort;
+        setSelectedPatient(preselected);
+        setPatientSearch(`${resolvedNumber || pid} - ${resolvedName}`);
         setCurrentVisit(prev => ({ ...prev, patient: pid }));
       }
     }

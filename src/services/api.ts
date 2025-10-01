@@ -129,6 +129,52 @@ export const visitsApi = {
   remove: (id: string) => request<{ message: string }>(`/visits/${id}`, 'DELETE'),
 };
 
+// Specific patient visits response according to backend example
+export type PatientVisitTransaction = {
+  id: number;
+  uploader_name: string;
+  amount: string;
+  payment_type: string;
+  timestamp: string;
+  uploader: number;
+  visit: number;
+  patient: number;
+};
+
+export type PatientVisit = {
+  id: number;
+  uploader_info: string;
+  total_paid: number;
+  balance: number;
+  transactions: PatientVisitTransaction[];
+  prescriptions_list: string[];
+  complaints: string;
+  history: string;
+  allergies: string;
+  physical_exam: string;
+  lab_test: string;
+  lab_results: string;
+  imaging: string;
+  diagnosis: string;
+  diagnosis_type: string; // e.g. 'short-term'
+  prescription: string; // comma-separated
+  charges: string; // currency as string
+  timestamp: string; // ISO datetime
+  uploader: number;
+  patient: number;
+};
+
+export type PatientVisitsResponse = {
+  patient: string;
+  visits: PatientVisit[];
+};
+
+// Extend visitsApi after types to keep grouping
+export const patientVisitsApi = {
+  byPatient: (patientId: number | string) =>
+    request<PatientVisitsResponse>(`/visits/patient-visits/${patientId}/`, 'GET'),
+};
+
 // Pharmacy API
 export type PharmacyItem = {
   id: number;
@@ -332,6 +378,7 @@ export const api = {
   auth: authApi,
   patients: patientsApi,
   visits: visitsApi,
+  patientVisits: patientVisitsApi,
   pharmacy: pharmacyApi,
   reports: reportsApi,
   finance: financeApi,
