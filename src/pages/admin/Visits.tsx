@@ -33,6 +33,10 @@ interface Visit {
   paid?: string;
   balance?: string;
   payment_method?: string;
+  // uploader fields from backend (for 'served by')
+  uploader_name?: string;
+  uploader_info?: string;
+  uploader?: number;
 }
 
 interface PatientShort {
@@ -189,18 +193,19 @@ const Visits = () => {
     const patientName = resolvePatientName(Number(v.patient)) || (v.patientName || '');
     const patientPhone = resolvePatientPhone(Number(v.patient)) || '';
     const patientNum = resolvePatientNumber(Number(v.patient)) || (v.patientNumber || '');
-    const servedBy = getUserDisplayName();
+    const servedBy = (v as any).uploader_name || (v as any).uploader_info || ((v as any).uploader ? `User #${(v as any).uploader}` : getUserDisplayName());
     const content = `
-      <div class="header">
-        <div class="title">Citimed - Hospital</div>
-        <div class="muted">Makongeni - Thika</div>
-        <div class="muted">Served by: ${servedBy}</div>
+      <div class="header first">
+        <div class="title">CITIMED CLINIC</div>
+        <div class="muted">MAKONGENI - THIKA</div>
+        <div class="muted"><em>SERVED BY:</em> ${servedBy}</div>
       </div>
+      <div class="thick-hr"></div>
       <div class="section">
         <div class="row"><span class="label">Patient:</span><span class="value">${patientName}</span></div>
         <div class="row"><span class="label">Date:</span><span class="value">${v.timestamp ? new Date(v.timestamp).toLocaleString() : new Date().toLocaleString()}</span></div>
       </div>
-      <div class="hr"></div>
+      <div class="thick-hr"></div>
       <div class="section">
         <table class="w-full">
           <thead>
@@ -238,17 +243,18 @@ const Visits = () => {
     const patientNum = resolvePatientNumber(Number(paymentVisit.patient)) || (paymentVisit.patientNumber || '');
     const servedBy = getUserDisplayName();
     const content = `
-      <div class="header">
-        <div class="title">Citimed - Hospital</div>
-        <div class="muted">Makongeni - Thika</div>
-        <div class="muted">Served by: ${servedBy}</div>
-        <div class="muted">Visit Receipt #${paymentVisit.id || ''}</div>
+      <div class="header first">
+        <div class="title">CITIMED CLINIC</div>
+        <div class="muted">MAKONGENI - THIKA</div>
+        <div class="muted"><em>SERVED BY:</em> ${servedBy}</div>
+        <div class="muted">VISIT RECEIPT #${paymentVisit.id || ''}</div>
       </div>
+      <div class="thick-hr"></div>
       <div class="section">
         <div class="row"><span class="label">Patient:</span><span class="value">${patientName}</span></div>
         <div class="row"><span class="label">Date:</span><span class="value">${paymentVisit.timestamp ? new Date(paymentVisit.timestamp).toLocaleString() : new Date().toLocaleString()}</span></div>
       </div>
-      <div class="hr"></div>
+      <div class="thick-hr"></div>
       <div class="section">
         <table class="w-full">
           <thead>
@@ -501,6 +507,10 @@ const Visits = () => {
       const val = resolve(v);
       return val ? String(val) : '';
     })(),
+    // uploader fields for "Served by"
+    uploader_name: v?.uploader_name || v?.uploader_info || v?.uploaderName || v?.uploaderInfo || '',
+    uploader_info: v?.uploader_info || v?.uploader_name || '',
+    uploader: v?.uploader,
   });
 
   const resolvePatientName = (patientId?: number) => {
@@ -681,21 +691,35 @@ const Visits = () => {
     doc.open();
     doc.write(`<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title>
       <style>
-        @page { size: 80mm auto; margin: 4mm; }
-        @media print { html, body { width: 80mm; margin: 0 auto; } }
-        html, body { margin: 0 auto; }
-        body { width: 72mm; margin: 0 auto; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: #111827; font-size: 13px; line-height: 1.5; }
-        .header { text-align:center; border-bottom:1px dashed #d1d5db; padding:10px 0 12px; margin-bottom:12px; }
-        .title { font-weight:700; font-size: 18px; }
-        .muted { color:#6b7280; }
+        /* Ensure content spans full width and starts at the very top */
+        @page { size: 80mm auto; margin: 0; }
+        @media print { html, body { width: 100%; margin: 0; padding: 0; } }
+        html, body { width: 100%; margin: 0; padding: 0; }
+        body {
+          width: 100%; /* use full printable width */
+          margin: 0; padding: 0;
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+          color: #111827;
+          font-size: 36px; /* doubled base font */
+          line-height: 1.3; /* reduced (about half of 2.55) for tighter vertical spacing */
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          word-break: break-word;
+        }
+        .header { text-align:center; border-bottom:1px dashed #d1d5db; padding:6px 0 8px; margin: 0 0 8px 0; }
+        .title { font-weight:700; font-size: 48px; }
+        .muted { color:#374151; font-size: 32px; }
         .row { display:flex; justify-content:space-between; gap:8px; }
-        .section { margin: 10px 0; }
-        .label { color:#111827; font-weight:700; font-size: 13px; }
-        .value { color:#111827; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
-        .hr { border-top:1px dashed #d1d5db; margin:10px 0; }
-        table { width:100%; border-collapse: collapse; }
-        th, td { text-align:left; border-bottom:1px dashed #e5e7eb; padding:6px 3px; font-size:13px; }
-        th { color:#111827; font-weight:700; }
+        .section { margin: 8px 0; }
+        .label { color:#111827; font-weight:700; font-size: 32px; }
+        .value { color:#111827; white-space: pre-wrap; word-break: break-word; font-size: 36px; }
+        .hr { border-top:1px dashed #d1d5db; margin:8px 0; }
+        .thick-hr { border-top:3px solid #111827; margin:10px 0; }
+        /* Make entire first header section bold */
+        .header.first, .header.first * { font-weight: 800 !important; }
+        table { width:100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { text-align:left; border-bottom:1px dashed #e5e7eb; padding:8px 5px; font-size:36px; }
+        th { color:#111827; font-weight:700; font-size:36px; }
         .right { text-align:right; }
       </style>
     </head><body>${contentHtml}</body></html>`);
