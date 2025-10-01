@@ -858,25 +858,25 @@ const Reports = () => {
       let rows: any[] = [];
       let headers: string[] = [];
       let labels: string[] = [];
-      let filename = 'report.csv';
+      let filename = 'report.xls';
       if (tab === 'visits') {
         rows = filteredVisits;
         headers = ['patient_name','timestamp','diagnosis','charges','paid','balance'];
         labels = ['Patient','Date','Diagnosis','Charges','Paid','Balance'];
-        filename = 'visits_report.csv';
+        filename = 'visits_report.xls';
       } else if (tab === 'sales') {
         rows = filteredSales;
         headers = ['customer_name','item_names','timestamp','items_count','units_count','total_amount'];
         labels = ['Customer','Item Name(s)','Date','Items (lines)','Units','Total'];
-        filename = 'sales_report.csv';
+        filename = 'sales_report.xls';
       } else {
         rows = filteredConsignments;
         headers = ['item_name','quantity','purchase_date','payment_type','expiry_date','supplier_name','purchase_cost'];
         labels = ['Item','Quantity','Purchase Date','Payment Type','Expiry','Supplier','Cost'];
-        filename = 'inventories_report.csv';
+        filename = 'inventories_report.xls';
       }
       const csv = toCSV(rows, headers, labels);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1110,7 +1110,7 @@ const Reports = () => {
                 disabled={exporting}
                 className="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
               >
-                Export CSV (Excel)
+                Export Excel
               </button>
               <button
                 onClick={() => { if (singleDay) { exportPDFForRange(singleDay, singleDay); } else { exportPDF(); } }}
