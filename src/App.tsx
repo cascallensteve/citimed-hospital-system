@@ -10,6 +10,7 @@ import Patients from './pages/admin/Patients';
 import Visits from './pages/admin/Visits';
 import Pharmacy from './pages/admin/Pharmacy';
 import AdminReports from './pages/admin/Reports';
+import QuickVisits from './pages/admin/QuickVisits';
 import Finance from './pages/admin/Finance';
 import PatientDetails from './pages/admin/PatientDetails';
 import SuperLayout from './pages/super/SuperLayout';
@@ -109,6 +110,14 @@ function App() {
                 element={
                   <RoleRoute roles={['admin', 'superadmin']}>
                     <AdminReports />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="admin/quick-visits"
+                element={
+                  <RoleRoute roles={['admin', 'superadmin']}>
+                    <QuickVisits />
                   </RoleRoute>
                 }
               />

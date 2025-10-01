@@ -12,7 +12,8 @@ import {
   DocumentTextIcon,
   ShoppingCartIcon,
   HomeIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  BeakerIcon
 } from '@heroicons/react/24/outline';
 
 type NavItem = { name: string; to: string; icon: any };
@@ -279,6 +280,7 @@ const Dashboard = () => {
         { name: 'Overview', to: '/dashboard', icon: HomeIcon },
         { name: 'Patients', to: '/dashboard/admin/patients', icon: UserGroupIcon },
         { name: 'Visits', to: '/dashboard/admin/visits', icon: CalendarDaysIcon },
+        { name: 'Quick Visits', to: '/dashboard/admin/quick-visits', icon: BeakerIcon },
         { name: 'Pharmacy', to: '/dashboard/admin/pharmacy', icon: ShoppingCartIcon },
         { name: 'Reports', to: '/dashboard/super/reports', icon: DocumentTextIcon },
         { name: 'Settings', to: '/dashboard/settings', icon: Cog6ToothIcon },
@@ -290,6 +292,7 @@ const Dashboard = () => {
         { name: 'Overview', to: '/dashboard', icon: HomeIcon },
         { name: 'Patients', to: '/dashboard/admin/patients', icon: UserGroupIcon },
         { name: 'Visits', to: '/dashboard/admin/visits', icon: CalendarDaysIcon },
+        { name: 'Quick Visits', to: '/dashboard/admin/quick-visits', icon: BeakerIcon },
         { name: 'Settings', to: '/dashboard/settings', icon: Cog6ToothIcon },
       ];
     }

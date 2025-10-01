@@ -120,6 +120,7 @@ const Visits = () => {
 
   // Removed popup modals for lab/prescription; using inline textareas with auto-numbering
 
+
   const filteredVisits = visits.filter(visit => {
     const q = (searchTerm || '').trim().toLowerCase();
     if (!q) return true;
@@ -1089,40 +1090,15 @@ const Visits = () => {
                   <DocumentTextIcon className="h-5 w-5" />
                   <span>New Visit</span>
                 </button>
-                <button
-                  onClick={async () => {
-                    // Enter anonymous mode and open form immediately
-                    setAnonymousMode(true);
-                    setSelectedPatient(null);
-                    setPatientSearch('');
-                    setShowVisitForm(true);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('add', '1');
-                    window.history.pushState({}, '', url.toString());
-                    // Resolve Anonymous patient id in background
-                    try {
-                      setAnonymousResolving(true);
-                      const id = await ensureAnonymousPatient();
-                      if (id) {
-                        setCurrentVisit(prev => ({ ...prev, patient: id }));
-                      } else {
-                        toast.error('Login required to record anonymous visit');
-                      }
-                    } finally {
-                      setAnonymousResolving(false);
-                    }
-                  }}
-                  className="bg-gray-100 text-gray-900 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
-                  title="Record a visit without patient details"
-                >
-                  Add Anonymous
-                </button>
+                {/* Quick Visit moved to sidebar as its own page */}
               </div>
             </div>
           </div>
           <div className="relative h-2 bg-gradient-to-r from-blue-500/60 via-indigo-500/60 to-purple-500/60" />
         </div>
       )}
+
+      
 
       {/* Post-Payment Print Prompt */}
       {showPostPaymentPrompt && paymentVisit && (
