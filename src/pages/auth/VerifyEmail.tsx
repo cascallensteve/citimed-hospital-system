@@ -73,7 +73,7 @@ const VerifyEmail = () => {
           <button type="submit" disabled={loading} className={`w-full py-2 rounded-md text-white ${loading?'bg-blue-400':'bg-blue-600 hover:bg-blue-700'}`}>{loading?'Verifying…':'Verify Email'}</button>
         </form>
         <button type="button" onClick={() => { if (!resending) onResend(); }} disabled={resending} className="w-full mt-3 py-2 rounded-md border text-blue-700 border-blue-200 dark:text-blue-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-gray-700">{resending?'Sending…':'Resend code'}</button>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mt-4 text-center"><Link to="/login" className="text-blue-600">Back to login</Link></p>
+        <p className="text-sm text-gray-600 dark:text-gray-300 mt-4 text-center"><Link to="/signup/super" className="text-blue-600">Back to signup</Link></p>
       </div>
     </div>
   );
