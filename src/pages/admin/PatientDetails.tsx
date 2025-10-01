@@ -15,10 +15,12 @@ const getApiBase = () => {
 const PatientDetails = () => {
   const { id } = useParams();
   const patientId = id ? id : '';
-  const [loading, setLoading] = useState(true);
+  const [loadingVisits, setLoadingVisits] = useState(true);
+  const [loadingPatient, setLoadingPatient] = useState(true);
   const [visitsResp, setVisitsResp] = useState<PatientVisitsResponse | null>(null);
   const [patientDetail, setPatientDetail] = useState<any>(null);
-  const { patients: cachedPatients } = useDataCache();
+  const [expandTxns, setExpandTxns] = useState<Record<number, boolean>>({});
+  const { patients: cachedPatients, visits: cachedAllVisits } = useDataCache();
 
   const displayPatient = useMemo(() => {
     // Prefer fetched patientDetail; fallback to cached patients
@@ -62,35 +64,81 @@ const PatientDetails = () => {
 
   useEffect(() => {
     if (!patientId) return;
-    setLoading(true);
+    const abort = new AbortController();
+    setLoadingVisits(true);
+    setLoadingPatient(true);
+
+    // Optimistic: show cached visits immediately if present
+    try {
+      const pidNum = Number(patientId);
+      const quick = Array.isArray(cachedAllVisits)
+        ? (cachedAllVisits as any[]).filter(v => Number(v?.patient) === pidNum)
+        : [];
+      if (quick.length) {
+        const mapped = quick.map((v: any) => ({
+          id: v?.id,
+          uploader_info: v?.uploader_info || v?.uploader_name || '',
+          total_paid: Number(v?.paid ?? v?.total_paid ?? 0),
+          balance: Number(v?.balance ?? 0),
+          transactions: Array.isArray(v?.transactions) ? v.transactions : [],
+          prescriptions_list: Array.isArray(v?.prescriptions_list) ? v.prescriptions_list : [],
+          complaints: v?.complaints ?? '',
+          history: v?.history ?? '',
+          allergies: v?.allergies ?? '',
+          physical_exam: v?.physical_exam ?? '',
+          lab_test: v?.lab_test ?? '',
+          lab_results: v?.lab_results ?? '',
+          imaging: v?.imaging ?? '',
+          diagnosis: v?.diagnosis ?? '',
+          diagnosis_type: v?.diagnosis_type ?? '',
+          prescription: v?.prescription ?? '',
+          charges: v?.charges ?? '',
+          timestamp: v?.timestamp || v?.created_at || v?.date || '',
+          uploader: v?.uploader,
+          patient: v?.patient,
+        }));
+        setVisitsResp({ patient: displayPatient?.name || `Patient #${patientId}`, visits: mapped } as any);
+        setLoadingVisits(false);
+      }
+    } catch {}
+
+    // Kick off visits fetch
     (async () => {
       try {
-        // 1) Load visits for this patient using typed API; backend expects trailing slash
         let data: PatientVisitsResponse | null = null;
         try {
+          // typed API
           data = await api.patientVisits.byPatient(patientId);
-        } catch (e) {
-          // graceful fallback with Bearer/Token if proxy/env mismatch
-          const res = await authFetch(`/visits/patient-visits/${patientId}/`, { method: 'GET' });
+        } catch {
+          // fallback direct auth fetch
+          const res = await authFetch(`/visits/patient-visits/${patientId}/`, { method: 'GET', signal: abort.signal as any });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error((json && (json.message || json.error || json.detail)) || `Failed to load visits (status ${res.status})`);
           data = json as PatientVisitsResponse;
         }
-        setVisitsResp(data);
-
-        // 2) Load patient detail (for demographics)
-        try {
-          let res = await authFetch(`/patients/patient-detail/${patientId}/`, { method: 'GET' });
-          if (res.status === 404 || res.status === 405) res = await authFetch(`/patients/patient-detail/${patientId}`, { method: 'GET' });
-          const json = await res.json().catch(() => ({}));
-          if (res.ok && json?.Patient) setPatientDetail(json.Patient);
-        } catch {}
+        if (!abort.signal.aborted && data) setVisitsResp(data);
       } catch (err) {
-        toast.error((err as Error).message || 'Failed to load patient visits');
+        if (!(err as any)?.name?.includes('Abort')) toast.error((err as Error).message || 'Failed to load patient visits');
       } finally {
-        setLoading(false);
+        if (!abort.signal.aborted) setLoadingVisits(false);
       }
     })();
+
+    // Fetch patient detail in parallel; do not block visits rendering
+    (async () => {
+      try {
+        let res = await authFetch(`/patients/patient-detail/${patientId}/`, { method: 'GET', signal: abort.signal as any });
+        if (res.status === 404 || res.status === 405) res = await authFetch(`/patients/patient-detail/${patientId}`, { method: 'GET', signal: abort.signal as any });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json?.Patient && !abort.signal.aborted) setPatientDetail(json.Patient);
+      } catch {
+        /* ignore patient detail error so visits show instantly */
+      } finally {
+        if (!abort.signal.aborted) setLoadingPatient(false);
+      }
+    })();
+
+    return () => abort.abort();
   }, [patientId]);
 
   const formatDateTime = (v?: string) => {
@@ -164,7 +212,7 @@ const PatientDetails = () => {
           <h3 className="text-lg font-semibold text-gray-900">Visit History</h3>
           <p className="text-sm text-gray-500">All visits and transactions for this patient</p>
         </div>
-        {loading ? (
+        {loadingVisits ? (
           <div className="p-6 text-gray-500">Loading visits…</div>
         ) : !visitsResp?.visits?.length ? (
           <div className="p-6 text-gray-500">No visits found for this patient.</div>
@@ -217,8 +265,19 @@ const PatientDetails = () => {
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <div className="font-medium text-gray-900 mb-1">Transactions</div>
-                    {v.transactions && v.transactions.length ? (
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-medium text-gray-900">Transactions</div>
+                      {v.transactions?.length ? (
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:text-blue-700 text-sm"
+                          onClick={() => setExpandTxns(prev => ({ ...prev, [v.id as any]: !prev[v.id as any] }))}
+                        >
+                          {expandTxns[v.id as any] ? 'Hide' : 'Show'} transactions ({v.transactions.length})
+                        </button>
+                      ) : null}
+                    </div>
+                    {v.transactions && v.transactions.length && expandTxns[v.id as any] ? (
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50">
@@ -244,7 +303,7 @@ const PatientDetails = () => {
                         </table>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">No transactions recorded.</div>
+                      <div className="text-sm text-gray-500">{v.transactions?.length ? 'Transactions are hidden' : 'No transactions recorded.'}</div>
                     )}
                   </div>
                 </div>
