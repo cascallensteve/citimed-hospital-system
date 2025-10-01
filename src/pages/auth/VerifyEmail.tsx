@@ -32,9 +32,8 @@ const VerifyEmail = () => {
     setLoading(true);
     try {
       await verifyEmail(email, otp);
-      toast.success('Email verified successfully.');
-      // Stay on this page. If you prefer to go back to profile, uncomment:
-      // navigate('/dashboard/profile');
+      toast.success('Email verified successfully. Redirecting to login…');
+      navigate(`/login?email=${encodeURIComponent(email)}`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
