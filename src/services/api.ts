@@ -1,7 +1,9 @@
 // Prefer Vite proxy in development to avoid CORS. In production, allow override via env
-const BASE_URL = import.meta.env.DEV
+// Normalize to avoid trailing slashes which would cause double '//' when concatenating
+const RAW_BASE_URL = import.meta.env.DEV
   ? '/api'
-  : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app/');
+  : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+const BASE_URL = (RAW_BASE_URL || '').replace(/\/+$/, '');
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -64,7 +66,8 @@ export type AddConsignmentResponse = {
 
 async function request<T>(path: string, method: HttpMethod, body?: any, options: RequestOptions = {}): Promise<T> {
   const token = options.noAuth ? undefined : (options.token ?? localStorage.getItem('token') ?? undefined);
-  const url = `${BASE_URL}${path}`;
+  const safePath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${BASE_URL}${safePath}`;
   const res = await fetch(url, {
     method,
     headers: {
@@ -325,38 +328,8 @@ export const pharmacyApi = {
     request<UpdateItemStockResponse>(`/pharmacy/update-item-stock/${itemId}/`, 'POST', payload),
 
   // New: Add a consignment with multiple items
-  addConsignment: async (payload: AddConsignmentPayload) => {
-    // Always post to the develop API for this endpoint per backend directive
-    const url = `https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app/pharmacy/add-consignment`;
-    const token = (typeof localStorage !== 'undefined') ? (localStorage.getItem('token') || undefined) : undefined;
-    const doPost = async (scheme: 'Token' | 'Bearer') => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `${scheme} ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      return res;
-    };
-
-    // Try Token first, then Bearer as fallback
-    let res = await doPost('Token');
-    if (res.status === 401 || res.status === 403) {
-      const alt = await doPost('Bearer');
-      if (alt.ok) res = alt; // use fallback if it worked
-    }
-
-    const text = await res.text();
-    let data: any = {};
-    try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
-    if (!res.ok) {
-      const message = (data && (data.message || data.error || data.detail)) || (text || `Request failed (${res.status})`);
-      throw new Error(message);
-    }
-    return data as AddConsignmentResponse;
-  },
+  addConsignment: (payload: AddConsignmentPayload) =>
+    request<AddConsignmentResponse>(`/pharmacy/add-consignment`, 'POST', payload),
 
   // Create item & sale
   addItem: (payload: AddPharmacyItemPayload) =>

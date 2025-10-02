@@ -124,6 +124,8 @@ const Pharmacy = () => {
   const [showPostSalePrompt, setShowPostSalePrompt] = useState<boolean>(false);
   // Consignments report by day
   const [consignmentsReportDate, setConsignmentsReportDate] = useState<string>('');
+  // Cache for resolving user id -> display name
+  const [userNameCache, setUserNameCache] = useState<Record<number, string>>({});
 
   const [newItem, setNewItem] = useState({
     name: '',
@@ -169,6 +171,127 @@ const Pharmacy = () => {
     const noTags = s.replace(/<[^>]*>/g, ' ');
     const compact = noTags.replace(/\s+/g, ' ').trim();
     return compact.length > 300 ? compact.slice(0, 300) + '…' : compact;
+  };
+
+  // Fetch a user's display name by id using best-effort endpoints and cache the result
+  const fetchUserNameById = async (uid: number): Promise<string> => {
+    if (!uid || !Number.isFinite(uid)) return '';
+    if (userNameCache[uid]) return userNameCache[uid];
+    const base = getApiBase();
+    const endpoints = [
+      `${base}/auth/user-detail/${uid}/`,
+      `${base}/auth/user-detail/${uid}`,
+      `${base}/users/${uid}/`,
+      `${base}/users/${uid}`,
+      `${base}/accounts/user-detail/${uid}/`,
+    ];
+    for (const url of endpoints) {
+      try {
+        const res = await authFetch(url, { method: 'GET' });
+        const data = await res.json().catch(() => ({} as any));
+        const name = resolveUploaderName(data) || '';
+        if (res.ok && name && name !== '-') {
+          setUserNameCache(prev => ({ ...prev, [uid]: name }));
+          return name;
+        }
+      } catch { /* try next */ }
+    }
+    return '';
+  };
+
+  // Resolve a friendly uploader name from various possible API fields
+  const resolveUploaderName = (obj: any): string => {
+    // Direct common keys
+    const direct = (
+      obj?.uploader_name || obj?.uploaderName ||
+      obj?.uploaded_by_name || obj?.admin_name || obj?.added_by_name ||
+      obj?.uploader_info || obj?.uploaderInfo ||
+      obj?.user_name || obj?.user_full_name || obj?.created_by_name || obj?.staff_name
+    );
+    if (direct) return String(direct);
+    // Compose first/last name if present at top or nested
+    const compose = (x: any) => {
+      if (!x) return '';
+      const first = (x.first_name || x.firstName || '').toString().trim();
+      const last = (x.last_name || x.lastName || '').toString().trim();
+      const full = [first, last].filter(Boolean).join(' ').trim();
+      return full || (x.full_name || x.fullName || x.name || '').toString();
+    };
+    const nested1 = compose(obj);
+    if (nested1) return nested1;
+    const nested2 = compose(obj?.uploader_details) || compose(obj?.uploaderDetails) || compose(obj?.user) || compose(obj?.uploaderUser);
+    if (nested2) return nested2;
+    // Avoid synthetic fallback like "User #<id>"; prefer '-' if no readable name available
+    return '-';
+  };
+
+  // Build printable HTML for a consignment detail
+  const buildConsignmentPrintableHtml = (cons: any) => {
+    const itemsRows = (Array.isArray(cons?.consignment_items) ? cons.consignment_items : []).map((it: any, i: number) => `
+      <tr>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${(it.item_name || `#${it.item}`)}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${it.batch_no || '-'}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${it.quantity}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${Number(it.purchase_cost || 0).toFixed(2)}</td>
+        <td style="padding:6px;border-bottom:1px solid #e5e7eb">${it.expiry_date ? new Date(it.expiry_date).toLocaleDateString() : '-'}</td>
+      </tr>
+    `).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>Consignment-${cons?.id || ''}</title>
+      <style>
+        body{font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:16px; color:#111827}
+        .header{ text-align:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #e5e7eb }
+        .title{ font-size:18px; font-weight:700 }
+        table{ width:100%; border-collapse:collapse; font-size:12px }
+        th,td{ text-align:left; padding:6px; border-bottom:1px solid #e5e7eb }
+        th{ background:#f9fafb; font-weight:700 }
+        .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin:8px 0 }
+        .row{ display:flex; justify-content:space-between }
+        .label{ font-weight:700 }
+      </style>
+    </head><body>
+      <div class="header">
+        <div class="title">Consignment #${cons?.id || '-'}</div>
+        <div>${cons?.timestamp ? new Date(cons.timestamp).toLocaleString() : ''}</div>
+      </div>
+      <div class="grid">
+        <div class="row"><span class="label">Supplier:</span> <span>${cons?.supplier_name || '-'}</span></div>
+        <div class="row"><span class="label">Uploader:</span> <span>${(cons?.uploader_name || resolveUploaderName(cons) || '-')}</span></div>
+        <div class="row"><span class="label">Purchase Cost:</span> <span>${Number(cons?.purchase_cost || 0).toFixed(2)}</span></div>
+        <div class="row"><span class="label">Total Paid:</span> <span>${Number(cons?.total_paid || 0).toFixed(2)}</span></div>
+        <div class="row"><span class="label">Balance:</span> <span>${Number(cons?.balance || 0).toFixed(2)}</span></div>
+        <div class="row"><span class="label">Payment Status:</span> <span>${(cons?.payment_status || '-').toString()}</span></div>
+      </div>
+      <h4 style="margin-top:10px; font-weight:700">Items</h4>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Item</th><th>Batch</th><th>Qty</th><th>Cost</th><th>Expiry</th></tr>
+        </thead>
+        <tbody>${itemsRows}</tbody>
+      </table>
+    </body></html>`;
+    return html;
+  };
+
+  const printConsignmentDetail = () => {
+    if (!consignmentDetail) { toast.error('No consignment loaded'); return; }
+    const html = buildConsignmentPrintableHtml(consignmentDetail);
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.open();
+    win.document.write(html + '<script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 300);}<\/script>');
+    win.document.close();
+  };
+
+  const openConsignmentPdf = () => {
+    if (!consignmentDetail) { toast.error('No consignment loaded'); return; }
+    const html = buildConsignmentPrintableHtml(consignmentDetail);
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   };
 
   const handleOpenAddConsignment = () => {
@@ -304,11 +427,12 @@ const Pharmacy = () => {
   };
 
   // Prefer explicit API base URL from env in both dev and prod; fallback to proxy in dev
+  // Normalize to remove trailing slashes to prevent `//pharmacy/...`
   const getApiBase = () => {
     const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
-    if (explicit && typeof explicit === 'string' && explicit.trim()) return explicit.trim();
-    // Fallback to develop backend where the new endpoint is available
-    return import.meta.env.DEV ? '/api' : 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app';
+    const normalizedEnv = (explicit && typeof explicit === 'string') ? explicit.trim().replace(/\/+$/, '') : '';
+    if (normalizedEnv) return normalizedEnv;
+    return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
   };
 
   
@@ -499,7 +623,11 @@ const Pharmacy = () => {
         try {
           const res = await authFetch(u, { method: 'GET' });
           const data = await res.json().catch(() => ({} as any));
-          const arr: any[] = Array.isArray(data?.inventories) ? data.inventories : [];
+          const arr: any[] = Array.isArray(data?.inventories)
+            ? data.inventories
+            : (Array.isArray((data as any)?.consignments)
+              ? (data as any).consignments
+              : (Array.isArray((data as any)?.data) ? (data as any).data : []));
           if (res.ok) { setConsignments(arr); try { setCachedConsignments(arr); } catch {} return; }
         } catch { /* try next */ }
       }
@@ -962,15 +1090,88 @@ const Pharmacy = () => {
 
   const openConsignmentDetail = async (consignmentId: number) => {
     try {
-      const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
-      const res = await authFetch(`${base}/pharmacy/consignment-detail/${consignmentId}/`, { method: 'POST' });
-      const data = await res.json().catch(() => ({} as any));
-      if (!data || !data.inventory) throw new Error('Consignment not found');
-      setConsignmentDetail(data.inventory);
-      setShowConsignmentDetail(true);
+      const base = getApiBase();
+      // Try both URL variants and both methods (some backends require GET)
+      const urls = [
+        `${base}/pharmacy/consignment-detail/${consignmentId}/`,
+        `${base}/pharmacy/consignment-detail/${consignmentId}`,
+      ];
+      const methods: Array<'GET' | 'POST'> = ['GET', 'POST'];
+      for (const u of urls) {
+        for (const method of methods) {
+          try {
+            const res = await authFetch(u, { method });
+            const text = await res.text().catch(() => '');
+            let data: any = {};
+            try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+            const inv = (data && (data.inventory || data.consignment || data)) as any;
+            if (res.ok && inv && (inv.id || Array.isArray(inv.consignment_items))) {
+              // If API didn't include a human uploader_name, and this consignment's uploader matches
+              // the currently logged-in user, fill it from user context so the UI shows a name.
+              try {
+                if (!resolveUploaderName(inv) || resolveUploaderName(inv) === '-') {
+                  const uid = Number(inv?.uploader);
+                  const curId = Number((user as any)?.id);
+                  if (uid && curId && uid === curId) {
+                    const first = (((user as any)?.first_name) || (user as any)?.firstName || '').toString().trim();
+                    const last = (((user as any)?.last_name) || (user as any)?.lastName || '').toString().trim();
+                    const full = [first, last].filter(Boolean).join(' ').trim() || (((user as any)?.full_name) || (user as any)?.fullName || (user as any)?.name || (user as any)?.username || '').toString();
+                    if (full) (inv as any).uploader_name = full;
+                  }
+                  // If still no name, try fetching by uid and populate
+                  if ((!inv as any)?.uploader_name || resolveUploaderName(inv) === '-') {
+                    const uid2 = Number(inv?.uploader);
+                    if (uid2) {
+                      const fetched = await fetchUserNameById(uid2);
+                      if (fetched) (inv as any).uploader_name = fetched;
+                    }
+                  }
+                }
+              } catch { /* ignore name fill errors */ }
+              setConsignmentDetail(inv);
+              setShowConsignmentDetail(true);
+              return;
+            }
+            // If 404/405 on this combo, continue to next combination
+            if (res.status === 404 || res.status === 405) continue;
+            // For 401/403, surface a clearer message and stop trying further methods on same URL
+            if (res.status === 401 || res.status === 403) {
+              toast.error('Not authorized to view this consignment. Please ensure you are logged in with the correct permissions.');
+              continue;
+            }
+          } catch { /* try next method/url */ }
+        }
+      }
+      throw new Error('Consignment not found');
     } catch (e) {
       toast.error(cleanErrorText((e as Error).message));
     }
+  };
+
+  // Derive correct consignment id from a table row and open detail
+  const openConsignmentDetailFromRow = async (row: any) => {
+    // Common fields seen from various list endpoints
+    const candidates = [
+      row?.consignment_id,
+      row?.parent,
+      row?.consignment,
+      row?.inventory_parent_id,
+      row?.inventory_id_parent,
+      row?.id,
+    ]
+      .map((v: any) => Number(v))
+      .filter((n: any) => Number.isFinite(n) && n > 0) as number[];
+    if (candidates.length === 0) {
+      toast.error('Unable to resolve consignment id');
+      return;
+    }
+    for (const id of candidates) {
+      try {
+        await openConsignmentDetail(id);
+        return;
+      } catch { /* try next candidate */ }
+    }
+    toast.error('Consignment not found');
   };
 
   const handleAddSale = async (e: React.FormEvent) => {
@@ -1601,29 +1802,40 @@ const Pharmacy = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch No</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Charges</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purchase Cost</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Paid</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purchase Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {consignmentsFiltered.map((c: any, idx: number) => (
                     <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.item_name || (c.item_details?.name) || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.quantity}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.batch_no || c.name || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.supplier_name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.id}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.timestamp ? new Date(c.timestamp).toLocaleString() : (c.purchase_date ? new Date(c.purchase_date).toLocaleDateString() : '-')}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.supplier_name || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatKES(Number(c.purchase_cost || 0))}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatKES(Number(c.total_paid || 0))}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatKES((c.remainder !== undefined && c.remainder !== null) ? Number(c.remainder || 0) : (Number(c.purchase_cost || 0) - Number(c.total_paid || 0)))}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.purchase_date ? new Date(c.purchase_date).toLocaleDateString() : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatKES((c.balance !== undefined && c.balance !== null)
+                        ? Number(c.balance)
+                        : ((c.remainder !== undefined && c.remainder !== null)
+                          ? Number(c.remainder || 0)
+                          : (Number(c.purchase_cost || 0) - Number(c.total_paid || 0))))}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(c.payment_status || '-').toString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => openConsignmentDetailFromRow(c)}
+                          className="inline-flex items-center justify-center rounded-full bg-green-600 hover:bg-green-700 p-2"
+                          aria-label="View consignment"
+                          title="View"
+                        >
+                          <EyeIcon className="h-4 w-4 text-white" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2231,29 +2443,51 @@ const Pharmacy = () => {
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold text-gray-900">Consignment #{consignmentDetail.id}</h3>
-              <button onClick={() => setShowConsignmentDetail(false)} className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Close</button>
+              <div className="flex items-center gap-2">
+                <button onClick={openConsignmentPdf} className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white">Save PDF</button>
+                <button onClick={printConsignmentDetail} className="px-3 py-1.5 rounded-md bg-gray-800 hover:bg-gray-900 text-white">Print</button>
+                <button onClick={() => setShowConsignmentDetail(false)} className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Close</button>
+              </div>
             </div>
+            {/* Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-              <div><span className="font-medium">Item:</span> {consignmentDetail.item_name}</div>
-              <div><span className="font-medium">Batch/Name:</span> {consignmentDetail.name}</div>
-              <div><span className="font-medium">Quantity:</span> {consignmentDetail.quantity}</div>
-              <div><span className="font-medium">Unit:</span> {consignmentDetail.unit_name || '-'}</div>
-              <div><span className="font-medium">Supplier:</span> {consignmentDetail.supplier_name}</div>
-              <div><span className="font-medium">Cost:</span> {formatKES(Number(consignmentDetail.purchase_cost || 0))}</div>
-              <div><span className="font-medium">Payment:</span> {(consignmentDetail.payment_type || '').toString().toUpperCase()}</div>
-              <div><span className="font-medium">Purchased:</span> {consignmentDetail.purchase_date ? new Date(consignmentDetail.purchase_date).toLocaleDateString() : '-'}</div>
-              <div><span className="font-medium">Expiry:</span> {consignmentDetail.expiry_date ? new Date(consignmentDetail.expiry_date).toLocaleDateString() : '-'}</div>
+              <div><span className="font-medium">Supplier:</span> {consignmentDetail.supplier_name || '-'}</div>
+              <div><span className="font-medium">Uploader:</span> {consignmentDetail.uploader_name || resolveUploaderName(consignmentDetail) || '-'}</div>
+              <div><span className="font-medium">Purchase Cost:</span> {formatKES(Number(consignmentDetail.purchase_cost || 0))}</div>
+              <div><span className="font-medium">Total Paid:</span> {formatKES(Number(consignmentDetail.total_paid || 0))}</div>
+              <div><span className="font-medium">Balance:</span> {formatKES(Number((consignmentDetail.balance ?? 0) as number))}</div>
+              <div><span className="font-medium">Payment Status:</span> {(consignmentDetail.payment_status || '-').toString()}</div>
               <div><span className="font-medium">Timestamp:</span> {consignmentDetail.timestamp ? new Date(consignmentDetail.timestamp).toLocaleString() : '-'}</div>
             </div>
+
+            {/* Items table */}
             <div className="mt-6">
-              <h4 className="text-sm font-semibold text-gray-900 mb-2">Item Details</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-                <div><span className="font-medium">Name:</span> {consignmentDetail.item_details?.name}</div>
-                <div><span className="font-medium">Current Stock:</span> {consignmentDetail.item_details?.quantity}</div>
-                <div><span className="font-medium">Unit:</span> {consignmentDetail.item_details?.unit_name || '-'}</div>
-                <div><span className="font-medium">Sales Instructions:</span> {consignmentDetail.item_details?.sales_instructions || '-'}</div>
-                <div><span className="font-medium">Created:</span> {consignmentDetail.item_details?.date_created ? new Date(consignmentDetail.item_details.date_created).toLocaleString() : '-'}</div>
-                <div><span className="font-medium">Last Updated:</span> {consignmentDetail.item_details?.last_updated ? new Date(consignmentDetail.item_details.last_updated).toLocaleString() : '-'}</div>
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">Consignment Items</h4>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Batch No</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200 text-sm text-gray-700">
+                    {(Array.isArray(consignmentDetail.consignment_items) ? consignmentDetail.consignment_items : []).map((it: any, idx: number) => (
+                      <tr key={it.id || idx}>
+                        <td className="px-4 py-2">{idx + 1}</td>
+                        <td className="px-4 py-2">{it.item_name || `#${it.item}`}</td>
+                        <td className="px-4 py-2">{it.batch_no || '-'}</td>
+                        <td className="px-4 py-2">{it.quantity}</td>
+                        <td className="px-4 py-2">{formatKES(Number((it.purchase_cost ?? 0) as number))}</td>
+                        <td className="px-4 py-2">{it.expiry_date ? new Date(it.expiry_date).toLocaleDateString() : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

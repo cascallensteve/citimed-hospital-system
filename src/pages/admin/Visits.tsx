@@ -295,9 +295,11 @@ const Visits = () => {
   };
 
   // Prefer explicit API base URL from env in both dev and prod; fallback to proxy in dev
+  // Normalize to strip trailing slashes to avoid URLs like `https://host//visits/all-visits`
   const getApiBase = () => {
     const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
-    if (explicit && typeof explicit === 'string' && explicit.trim()) return explicit.trim();
+    const normalizedEnv = (explicit && typeof explicit === 'string') ? explicit.trim().replace(/\/+$/, '') : '';
+    if (normalizedEnv) return normalizedEnv;
     return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
   };
 

@@ -16,10 +16,12 @@ import { useNavigate } from 'react-router-dom';
 import { useDataCache } from '../../context/DataCacheContext';
 
 // Prefer explicit API base URL from env in both dev and prod; fallback to proxy in dev
+// Normalize to remove any trailing slashes to prevent URLs like `https://host//patients/...`
 const getApiBase = () => {
   const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
-  if (explicit && typeof explicit === 'string' && explicit.trim()) return explicit.trim();
-  return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
+  const normalizedEnv = (explicit && typeof explicit === 'string') ? explicit.trim().replace(/\/+$/, '') : '';
+  if (normalizedEnv) return normalizedEnv;
+  return import.meta.env.DEV ? '/api' : 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app';
 };
 
 interface Patient {
@@ -45,6 +47,14 @@ const Patients = () => {
   // Start with empty list; load from backend on mount
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Auth guard helpers (must be inside component to access navigate)
+  const getToken = () => (localStorage.getItem('token') || '').trim();
+  const redirectToLogin = (msg?: string) => {
+    if (msg) toast.error(msg);
+    try { localStorage.removeItem('token'); } catch {}
+    navigate('/login');
+  };
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -398,7 +408,7 @@ const Patients = () => {
   };
 
   const authFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const token = localStorage.getItem('token') || '';
+    const token = getToken();
     const withAuth = (scheme: 'Token' | 'Bearer') => fetch(input, {
       ...(init || {}),
       headers: {
@@ -407,7 +417,13 @@ const Patients = () => {
       } as any,
     });
     let res = await withAuth('Token');
-    if (res.status === 401 || res.status === 403) res = await withAuth('Bearer');
+    if (res.status === 401 || res.status === 403) {
+      res = await withAuth('Bearer');
+      if (res.status === 401 || res.status === 403) {
+        // Force re-login when unauthorized
+        redirectToLogin('Session expired or not authenticated. Please log in.');
+      }
+    }
     return res;
   };
 
@@ -415,6 +431,11 @@ const Patients = () => {
   useEffect(() => {
     (async () => {
       if (!cacheLoaded) return;
+      // Require auth before attempting to load
+      if (!getToken()) {
+        redirectToLogin('Please log in to view patients.');
+        return;
+      }
       setLoading(true);
       try {
         // Open Add Patient form if requested via query param
