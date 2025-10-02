@@ -12,6 +12,7 @@ import {
   CalendarDaysIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 import { toast } from 'react-hot-toast';
 import { useDataCache } from '../../context/DataCacheContext';
 
@@ -59,6 +60,7 @@ const Pharmacy = () => {
   const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'consignments'>('inventory');
   const [showAddItemForm, setShowAddItemForm] = useState(false);
   const [showSaleForm, setShowSaleForm] = useState(false);
+  const [showAddConsignmentForm, setShowAddConsignmentForm] = useState(false);
   const [showViewItem, setShowViewItem] = useState(false);
   const [showEditItem, setShowEditItem] = useState(false);
   const [showDeleteItem, setShowDeleteItem] = useState(false);
@@ -73,6 +75,7 @@ const Pharmacy = () => {
   const [consignmentDetail, setConsignmentDetail] = useState<any | null>(null);
   const [selectedItem, setSelectedItem] = useState<PharmacyItem | null>(null);
   const [editItem, setEditItem] = useState<PharmacyItem | null>(null);
+  const canAddConsignment = (user?.role === 'superadmin') || ((user as any)?.permission === 'over-the-counter');
   const canUsePharmacy = (
     user?.role === 'superadmin' ||
     user?.role === 'admin' ||
@@ -132,6 +135,15 @@ const Pharmacy = () => {
     sales_instructions: '',
   });
 
+  // Add Consignment (multi-line) form state
+  const [addConsignment, setAddConsignment] = useState({
+    supplier_name: '',
+    total_paid: '' as string | '', // keep as string for backend format
+    lines: [
+      { itemId: '', batch_no: '', quantity: 1 as number | '', purchase_cost: '' as number | '', expiry_date: '' }
+    ] as Array<{ itemId: string; batch_no: string; quantity: number | ''; purchase_cost: number | ''; expiry_date: string }>,
+  });
+
   const [newSale, setNewSale] = useState({
     customer_name: '',
     lines: [
@@ -157,6 +169,69 @@ const Pharmacy = () => {
     const noTags = s.replace(/<[^>]*>/g, ' ');
     const compact = noTags.replace(/\s+/g, ' ').trim();
     return compact.length > 300 ? compact.slice(0, 300) + '…' : compact;
+  };
+
+  const handleOpenAddConsignment = () => {
+    if (!canAddConsignment) { toast.error('You do not have permission to add consignments'); return; }
+    setAddConsignment({
+      supplier_name: '',
+      total_paid: '',
+      lines: [ { itemId: '', batch_no: '', quantity: 1, purchase_cost: '', expiry_date: '' } ],
+    });
+    setShowAddConsignmentForm(true);
+  };
+
+  const addConsignmentLine = () => {
+    setAddConsignment(prev => ({
+      ...prev,
+      lines: [...prev.lines, { itemId: '', batch_no: '', quantity: 1, purchase_cost: '', expiry_date: '' }],
+    }));
+  };
+
+  const removeConsignmentLine = (index: number) => {
+    setAddConsignment(prev => ({
+      ...prev,
+      lines: prev.lines.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleSubmitAddConsignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canAddConsignment) { toast.error('You do not have permission to add consignments'); return; }
+    try {
+      // Build payload
+      const itemsBuilt = (addConsignment.lines || []).map((l) => {
+        const selected = items.find(it => it.id === l.itemId);
+        const qty = l.quantity === '' ? NaN : Number(l.quantity);
+        const cost = l.purchase_cost === '' ? NaN : Number(l.purchase_cost);
+        if (!selected || !l.batch_no.trim() || !l.expiry_date || isNaN(qty) || qty <= 0 || isNaN(cost) || cost < 0) return null;
+        return {
+          item: Number(selected.id),
+          batch_no: l.batch_no.trim(),
+          quantity: Math.max(1, Number(qty) || 1),
+          purchase_cost: (Number(cost) || 0).toFixed(2),
+          expiry_date: l.expiry_date,
+        };
+      }).filter(Boolean) as Array<{ item: number; batch_no: string; quantity: number; purchase_cost: string; expiry_date: string }>;
+
+      if (!addConsignment.supplier_name.trim()) { toast.error('Supplier name is required'); return; }
+      if (itemsBuilt.length === 0) { toast.error('Add at least one valid consignment line'); return; }
+      const totalPaidNum = addConsignment.total_paid === '' ? 0 : Number(addConsignment.total_paid);
+      if (isNaN(totalPaidNum) || totalPaidNum < 0) { toast.error('Total paid must be a valid amount'); return; }
+
+      const body = {
+        supplier_name: addConsignment.supplier_name.trim(),
+        total_paid: Number(totalPaidNum).toFixed(2),
+        consignment_items: itemsBuilt,
+      };
+      await api.pharmacy.addConsignment(body as any);
+      toast.success('Consignment recorded');
+      setShowAddConsignmentForm(false);
+      // Refresh consignments list
+      try { await loadConsignments(); } catch {}
+    } catch (e) {
+      toast.error(cleanErrorText((e as Error).message));
+    }
   };
 
   // Generate a PDF-like report window for consignments by a specific day
@@ -232,7 +307,8 @@ const Pharmacy = () => {
   const getApiBase = () => {
     const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
     if (explicit && typeof explicit === 'string' && explicit.trim()) return explicit.trim();
-    return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
+    // Fallback to develop backend where the new endpoint is available
+    return import.meta.env.DEV ? '/api' : 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app';
   };
 
   
@@ -1115,7 +1191,7 @@ const Pharmacy = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Hero Banner */}
-      {!(showAddItemForm || showSaleForm || showStockForm) && (
+      {!(showAddItemForm || showSaleForm || showStockForm || showAddConsignmentForm) && (
       <div
         className="relative overflow-hidden rounded-xl text-white shadow-lg"
         style={{
@@ -1147,11 +1223,137 @@ const Pharmacy = () => {
                 <ShoppingCartIcon className="h-5 w-5" />
                 <span>New Sale</span>
               </button>
+              {canAddConsignment && (
+                <button
+                  onClick={handleOpenAddConsignment}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+                >
+                  Add Consignment
+                </button>
+              )}
             </div>
           </div>
         </div>
         <div className="relative h-2 bg-gradient-to-r from-blue-500/60 via-indigo-500/60 to-purple-500/60" />
       </div>
+      )}
+
+      {/* Add Consignment Form */}
+      {showAddConsignmentForm && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+          <div className="sticky top-0 z-10 border-b bg-white px-4 py-3 md:px-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg md:text-xl font-semibold text-gray-900">Add Consignment</h3>
+              <button onClick={() => setShowAddConsignmentForm(false)} className="px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white">Back</button>
+            </div>
+          </div>
+          <form onSubmit={handleSubmitAddConsignment} className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Name</label>
+                <input
+                  type="text"
+                  required
+                  value={addConsignment.supplier_name}
+                  onChange={(e) => setAddConsignment({ ...addConsignment, supplier_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Total Paid</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={addConsignment.total_paid}
+                  onChange={(e) => setAddConsignment({ ...addConsignment, total_paid: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-md font-semibold text-gray-900">Consignment Items</h4>
+                <button type="button" onClick={addConsignmentLine} className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white">Add Line</button>
+              </div>
+              <div className="space-y-4">
+                {addConsignment.lines.map((ln, idx) => (
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end border p-3 rounded-lg">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Item</label>
+                      <select
+                        value={ln.itemId}
+                        onChange={(e) => setAddConsignment(prev => ({ ...prev, lines: prev.lines.map((l, i) => i === idx ? { ...l, itemId: e.target.value } : l) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      >
+                        <option value="">Select Item…</option>
+                        {items.map(it => (
+                          <option key={it.id} value={it.id}>{it.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Batch No</label>
+                      <input
+                        type="text"
+                        value={ln.batch_no}
+                        onChange={(e) => setAddConsignment(prev => ({ ...prev, lines: prev.lines.map((l, i) => i === idx ? { ...l, batch_no: e.target.value } : l) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., BATCH-001"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={ln.quantity}
+                        onChange={(e) => setAddConsignment(prev => ({ ...prev, lines: prev.lines.map((l, i) => i === idx ? { ...l, quantity: (e.target.value === '' ? '' : Math.max(1, Number(e.target.value) || 1)) } : l) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Cost</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ln.purchase_cost}
+                        onChange={(e) => setAddConsignment(prev => ({ ...prev, lines: prev.lines.map((l, i) => i === idx ? { ...l, purchase_cost: (e.target.value === '' ? '' : Number(e.target.value)) } : l) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                      <input
+                        id={`expiry_${idx}`}
+                        type="date"
+                        value={ln.expiry_date}
+                        onChange={(e) => setAddConsignment(prev => ({ ...prev, lines: prev.lines.map((l, i) => i === idx ? { ...l, expiry_date: e.target.value } : l) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div className="flex gap-2 md:justify-end">
+                      <button type="button" onClick={() => removeConsignmentLine(idx)} className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md">Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowAddConsignmentForm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">Cancel</button>
+              <button type="submit" className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded">Save Consignment</button>
+            </div>
+          </form>
+        </div>
       )}
       {!(showAddItemForm || showSaleForm || showStockForm) && (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

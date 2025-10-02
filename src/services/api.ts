@@ -29,6 +29,39 @@ export type CreatePharmacySalePayload = {
   total_amount: string;
 };
 
+// New: Add Consignment payload/response
+export type AddConsignmentPayload = {
+  supplier_name: string;
+  total_paid: string; // decimal string
+  consignment_items: Array<{
+    item: number;
+    batch_no: string;
+    quantity: number;
+    purchase_cost: string; // decimal string
+    expiry_date: string; // YYYY-MM-DD
+  }>;
+};
+
+export type AddConsignmentResponse = {
+  id: number;
+  uploader: number;
+  timestamp: string;
+  supplier_name: string;
+  purchase_cost: string;
+  total_paid: string;
+  balance: number;
+  payment_status: string;
+  consignment_items: Array<{
+    id: number;
+    item: number;
+    item_name?: string;
+    batch_no: string;
+    quantity: number;
+    purchase_cost: string;
+    expiry_date: string;
+  }>;
+};
+
 async function request<T>(path: string, method: HttpMethod, body?: any, options: RequestOptions = {}): Promise<T> {
   const token = options.noAuth ? undefined : (options.token ?? localStorage.getItem('token') ?? undefined);
   const url = `${BASE_URL}${path}`;
@@ -290,6 +323,40 @@ export const pharmacyApi = {
   // Update item stock by adding a consignment
   updateItemStock: (itemId: number, payload: UpdateItemStockPayload) =>
     request<UpdateItemStockResponse>(`/pharmacy/update-item-stock/${itemId}/`, 'POST', payload),
+
+  // New: Add a consignment with multiple items
+  addConsignment: async (payload: AddConsignmentPayload) => {
+    // Always post to the develop API for this endpoint per backend directive
+    const url = `https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app/pharmacy/add-consignment`;
+    const token = (typeof localStorage !== 'undefined') ? (localStorage.getItem('token') || undefined) : undefined;
+    const doPost = async (scheme: 'Token' | 'Bearer') => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `${scheme} ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      return res;
+    };
+
+    // Try Token first, then Bearer as fallback
+    let res = await doPost('Token');
+    if (res.status === 401 || res.status === 403) {
+      const alt = await doPost('Bearer');
+      if (alt.ok) res = alt; // use fallback if it worked
+    }
+
+    const text = await res.text();
+    let data: any = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
+    if (!res.ok) {
+      const message = (data && (data.message || data.error || data.detail)) || (text || `Request failed (${res.status})`);
+      throw new Error(message);
+    }
+    return data as AddConsignmentResponse;
+  },
 
   // Create item & sale
   addItem: (payload: AddPharmacyItemPayload) =>
