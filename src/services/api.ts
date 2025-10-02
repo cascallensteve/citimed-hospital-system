@@ -1,7 +1,7 @@
 // Prefer Vite proxy in development to avoid CORS. In production, allow override via env
 const BASE_URL = import.meta.env.DEV
   ? '/api'
-  : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+  : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app/');
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
