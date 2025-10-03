@@ -1969,12 +1969,12 @@ const Visits = () => {
                               const unitPrice = Number((found as any).unit_price ?? (found as any).unitPrice ?? 0) || 0;
                               const discount = Number((found as any).discount ?? 0) || 0;
                               setVisitDrugs(prev => prev.map((r,i)=> i===idx ? { ...r, item: newId, cost: unitPrice ? unitPrice.toFixed(2) : r.cost, discount: r.discount === '' || r.discount === '0.00' ? discount.toFixed(2) : r.discount } : r));
-                              // Force the visible field to show the drug name, not the ID
-                              setDrugSearchTerms(prev => { const copy = [...prev]; copy[idx] = String(found.name || `#${found.id}`); return copy; });
+                              // Force the visible field to show ONLY the drug name (no ID or #)
+                              setDrugSearchTerms(prev => { const copy = [...prev]; copy[idx] = String(found.name || ''); return copy; });
                             }
                           }}
                           onBlur={(e) => {
-                            // Resolve partial text to a selection on blur
+                            // Resolve partial text to a selection on blur (show ONLY name)
                             const val = e.target.value;
                             const list = (Array.isArray(cachedPharmacy) ? cachedPharmacy : []) as any[];
                             const byId = list.find(it => String(it?.id) === String(val));
@@ -1994,7 +1994,7 @@ const Visits = () => {
                         />
                         <datalist id={`drug-list-${idx}`}>
                           {(Array.isArray(cachedPharmacy) ? cachedPharmacy : []).map((it: any) => (
-                            <option key={String(it?.id)} value={String(it?.name || '')}>{`${String(it?.name || '')} (#${String(it?.id)})`}</option>
+                            <option key={String(it?.id)} value={String(it?.name || '')}>{String(it?.name || '')}</option>
                           ))}
                         </datalist>
                       </div>
