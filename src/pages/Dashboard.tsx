@@ -42,7 +42,7 @@ const Dashboard = () => {
       document.documentElement.classList.remove('dark');
     }
     // Quick Visits revenue (today + total) from cache
-    if (Array.isArray(cacheQuickVisits)) {
+    if (Array.isArray(cacheQuickVisits) && cacheQuickVisits.length > 0) {
       const today = new Date();
       const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
       let totalAll = 0;
@@ -50,7 +50,14 @@ const Dashboard = () => {
       for (const qv of cacheQuickVisits) {
         const ts = qv?.timestamp || qv?.created_at || qv?.date || qv?.createdAt || qv?.date_created || qv?.dateCreated;
         const dt = ts ? new Date(ts) : null;
-        const amt = moneyToNumber(qv?.amount);
+        const amt = (() => {
+          const candidates = [qv?.amount, qv?.total_amount, qv?.total, qv?.charges, qv?.paid];
+          for (const c of candidates) {
+            const n = moneyToNumber(c);
+            if (n) return n;
+          }
+          return 0;
+        })();
         totalAll += amt;
         if (dt && isSameDay(dt, today)) totalToday += amt;
       }
@@ -58,7 +65,7 @@ const Dashboard = () => {
       setQuickVisitsRevenueToday(totalToday);
     }
     // Supplier Outstanding from cached consignments
-    if (Array.isArray(cacheConsignments)) {
+    if (Array.isArray(cacheConsignments) && cacheConsignments.length > 0) {
       const totalOutstanding = cacheConsignments.reduce((sum: number, c: any) => {
         const charges = moneyToNumber(c?.purchase_cost);
         const paid = moneyToNumber(c?.total_paid);
@@ -257,7 +264,9 @@ const Dashboard = () => {
     const allEmpty = (!Array.isArray(cachePatients) || cachePatients.length === 0)
       && (!Array.isArray(cacheVisits) || cacheVisits.length === 0)
       && (!Array.isArray(cachePharmacyItems) || cachePharmacyItems.length === 0)
-      && (!Array.isArray(cacheSales) || cacheSales.length === 0);
+      && (!Array.isArray(cacheSales) || cacheSales.length === 0)
+      && (!Array.isArray(cacheQuickVisits) || cacheQuickVisits.length === 0)
+      && (!Array.isArray(cacheConsignments) || cacheConsignments.length === 0);
     const hasToken = !!localStorage.getItem('token');
     if (hasToken && allEmpty) {
       refreshAll().catch(() => {});
@@ -555,7 +564,12 @@ const Dashboard = () => {
   // Final fallback: if after refreshAll caches are still empty, run direct fetches to populate cards
   useEffect(() => {
     if (!cacheLoaded) return;
-    const hasData = (patientsTotal ?? 0) > 0 || visitsToday > 0 || pharmacyItemsCount > 0 || revenueToday > 0 || quickVisitsRevenueTotal > 0;
+    const hasData = (patientsTotal ?? 0) > 0
+      || visitsToday > 0
+      || pharmacyItemsCount > 0
+      || revenueToday > 0
+      || quickVisitsRevenueTotal > 0
+      || supplierOutstanding > 0;
     if (hasData) return;
     const token = localStorage.getItem('token') || '';
     if (!token) return;
