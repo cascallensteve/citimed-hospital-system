@@ -32,6 +32,7 @@ export type DataCache = {
   loaded: boolean; // true when initial preload finished (success or fail)
   // actions
   refreshAll: () => Promise<void>;
+  clearAll: () => void;
   setPatients: React.Dispatch<React.SetStateAction<CachedPatient[]>>;
   setVisits: React.Dispatch<React.SetStateAction<CachedVisit[]>>;
   setPharmacyItems: React.Dispatch<React.SetStateAction<CachedPharmacyItem[]>>;
@@ -43,9 +44,11 @@ export type DataCache = {
 const DataCacheContext = createContext<DataCache | undefined>(undefined);
 
 const getApiBase = () => {
-  const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
-  if (explicit && typeof explicit === 'string' && explicit.trim()) return explicit.trim();
-  return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
+  const raw = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+  const explicit = (raw && typeof raw === 'string') ? raw.trim().replace(/\/+$/, '') : '';
+  if (explicit) return explicit;
+  const fallback = import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
+  return fallback.replace(/\/+$/, '');
 };
 
 const authFetch = async (url: string, init?: RequestInit) => {
@@ -261,6 +264,31 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => window.removeEventListener('citimed-login', onLogin);
   }, []);
 
+  // Clear all caches (localStorage + in-memory)
+  const clearAll = () => {
+    try { localStorage.removeItem('patients_cache'); } catch {}
+    try { localStorage.removeItem('visits_cache_raw'); } catch {}
+    try { localStorage.removeItem('pharmacy_cache'); } catch {}
+    try { localStorage.removeItem('sales_cache'); } catch {}
+    try { localStorage.removeItem('consignments_cache'); } catch {}
+    try { localStorage.removeItem('quick_visits_cache'); } catch {}
+    setPatients([]);
+    setVisits([]);
+    setPharmacyItems([]);
+    setSales([]);
+    setConsignments([]);
+    setQuickVisits([]);
+    // Keep loaded true so UI doesn't stall; next data load will repopulate
+    setLoaded(true);
+  };
+
+  // Global event hook to clear caches on demand (e.g., on logout)
+  useEffect(() => {
+    const handler = () => clearAll();
+    window.addEventListener('citimed-clear-cache', handler);
+    return () => window.removeEventListener('citimed-clear-cache', handler);
+  }, []);
+
   const refreshAll = async () => {
     setLoaded(false);
     await preload();
@@ -275,6 +303,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     quickVisits,
     loaded,
     refreshAll,
+    clearAll,
     setPatients,
     setVisits,
     setPharmacyItems,

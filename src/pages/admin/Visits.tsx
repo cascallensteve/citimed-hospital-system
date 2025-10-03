@@ -1143,8 +1143,8 @@ const Visits = () => {
         drugs: builtDrugs,
       } as any;
 
-      // Use the provided endpoint host for add-visit
-      const addVisitBase = 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app';
+      // Use production API base for add-visit
+      const addVisitBase = 'https://citimed-api.vercel.app';
       let res = await authFetch(`${addVisitBase}/visits/add-visit`, { method: 'POST', body: JSON.stringify(body) });
       if (res.status === 404 || res.status === 405) res = await authFetch(`${addVisitBase}/visits/add-visit/`, { method: 'POST', body: JSON.stringify(body) });
       const data = await res.json().catch(async () => ({ raw: cleanErrorText(await res.text().catch(()=> '')) }));

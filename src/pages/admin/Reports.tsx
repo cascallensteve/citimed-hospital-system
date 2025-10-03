@@ -156,18 +156,27 @@ const Reports = () => {
     return res;
   };
 
+  // Normalized API base (prefer VITE_API_BASE_URL; fallback to dev proxy '/api' or prod URL), strip trailing slashes
+  const getApiBaseLocal = () => {
+    const raw = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+    const explicit = (raw && typeof raw === 'string') ? raw.trim().replace(/\/+$/, '') : '';
+    if (explicit) return explicit;
+    const fb = import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
+    return fb.replace(/\/+$/, '');
+  };
+
   const hasRange = useMemo(() => Boolean(from || to), [from, to]);
 
   // Finance endpoints (corrected): use authFetch directly
   const financeConsignmentsByDay = async ({ date }: { date: string }) => {
-    const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+    const base = getApiBaseLocal();
     const res = await authFetch(`${base}/finances/consignments-by-day`, { method: 'POST', body: JSON.stringify({ date }) });
     const data = await res.json().catch(() => ({}));
     const consignments = Array.isArray((data as any)?.consignments) ? (data as any).consignments : [];
     return { consignments } as { consignments: any[] };
   };
   const financeConsignmentsByDate = async ({ start_date, end_date }: { start_date: string; end_date: string }) => {
-    const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+    const base = getApiBaseLocal();
     const res = await authFetch(`${base}/finances/consignments-by-date`, { method: 'POST', body: JSON.stringify({ start_date, end_date }) });
     const data = await res.json().catch(() => ({}));
     const consignments = Array.isArray((data as any)?.consignments) ? (data as any).consignments : [];
@@ -176,7 +185,7 @@ const Reports = () => {
 
   // Helper: robustly fetch all consignments (tries URL with and without trailing slash, and both auth schemes)
   const fetchAllConsignments = async (): Promise<ConsignmentInventory[]> => {
-    const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+    const base = getApiBaseLocal();
     const urls = [
       `${base}/pharmacy/consignments`,
       `${base}/pharmacy/consignments/`,
@@ -227,7 +236,7 @@ const Reports = () => {
   useEffect(() => {
     (async () => {
       try {
-        const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+        const base = getApiBaseLocal();
         let res = await authFetch(`${base}/patients/all-patients`);
         if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/patients/all-patients/`);
         const data = await res.json().catch(() => ({}));
@@ -1128,7 +1137,7 @@ const Reports = () => {
                 />
                 <button type="button" onClick={()=>setShowSingleCal(v=>!v)} className="px-2 py-1 text-xs rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800">Calendar</button>
                 {showSingleCal && (
-                  <div className="absolute z-20 top-full mt-2 left-0 bg-white border border-gray-200 rounded-md p-2 shadow">
+                  <div className="absolute top-full left-0 mt-2 bg-white rounded-md shadow p-2 z-10">
                     <CalendarGrid
                       year={viewYear}
                       month={viewMonth}

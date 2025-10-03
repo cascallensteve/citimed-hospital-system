@@ -172,6 +172,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    // Clear app-wide caches (in-memory + localStorage) via DataCacheContext handler
+    try { window.dispatchEvent(new Event('citimed-clear-cache')); } catch {}
     setUser(null);
     navigate('/login');
   };

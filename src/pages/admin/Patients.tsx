@@ -9,33 +9,32 @@ import {
   CalendarDaysIcon,
   PencilIcon,
   TrashIcon,
-  EyeIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useDataCache } from '../../context/DataCacheContext';
 
-// Prefer explicit API base URL from env in both dev and prod; fallback to proxy in dev
-// Normalize to remove any trailing slashes to prevent URLs like `https://host//patients/...`
-const getApiBase = () => {
-  const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
-  const normalizedEnv = (explicit && typeof explicit === 'string') ? explicit.trim().replace(/\/+$/, '') : '';
-  if (normalizedEnv) return normalizedEnv;
-  return import.meta.env.DEV ? '/api' : 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app';
-};
+  // Prefer explicit API base URL from env in both dev and prod; fallback to proxy in dev
+  // Normalize to remove any trailing slashes to prevent URLs like `https://host//patients/...`
+  const getApiBase = () => {
+    const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
+    const normalizedEnv = (explicit && typeof explicit === 'string') ? explicit.trim().replace(/\/+$/, '') : '';
+    if (normalizedEnv) return normalizedEnv;
+    return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
+  };
 
-interface Patient {
-  id: string;
-  patientNumber: string;
-  fullName: string;
-  age: number;
-  gender: 'Male' | 'Female' | 'Other';
-  phoneNumber: string;
-  location: string;
-  patientType: 'Walk-in' | 'Repeat' | 'Referred';
-  registrationDate: string;
-  additionalInfo?: string;
-}
+  interface Patient {
+    id: string;
+    patientNumber: string;
+    fullName: string;
+    age: number;
+    gender: 'Male' | 'Female' | 'Other';
+    phoneNumber: string;
+    location: string;
+    patientType: 'Walk-in' | 'Repeat' | 'Referred';
+    registrationDate: string;
+    additionalInfo?: string;
+  }
 
 const Patients = () => {
   const navigate = useNavigate();

@@ -1,8 +1,9 @@
-// Prefer Vite proxy in development to avoid CORS. In production, allow override via env
+// Prefer explicit VITE_API_BASE_URL in all environments. If not provided:
+// - Dev: fall back to Vite proxy '/api'
+// - Prod: fall back to public production URL
 // Normalize to avoid trailing slashes which would cause double '//' when concatenating
-const RAW_BASE_URL = import.meta.env.DEV
-  ? '/api'
-  : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+const ENV_BASE = ((import.meta as any).env?.VITE_API_BASE_URL || '').toString().trim();
+const RAW_BASE_URL = ENV_BASE || (import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app');
 const BASE_URL = (RAW_BASE_URL || '').replace(/\/+$/, '');
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
