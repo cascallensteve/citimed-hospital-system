@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { 
   MagnifyingGlassIcon, 
@@ -79,6 +79,9 @@ const Visits = () => {
   const [activeTab, setActiveTab] = useState<'visits' | 'patients'>('patients');
 
   const [visits, setVisits] = useState<Visit[]>([]);
+  // Hydration flag to avoid repeated boot-time work
+  const didHydrateFromLocal = useRef(false);
+  const didInit = useRef(false);
   const { user } = useAuth();
   const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, pharmacyItems: cachedPharmacy, loaded: cacheLoaded } = useDataCache();
 
@@ -813,6 +816,29 @@ const Visits = () => {
 
   // removed unused exportAllVisitsPdf
 
+  // Early hydrate visits from localStorage (before cache/context finishes)
+  useEffect(() => {
+    if (didHydrateFromLocal.current) return;
+    try {
+      const raw = localStorage.getItem('visits_cache_raw');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length) {
+          const mapped = arr.map(mapApiVisitToDisplay).map(v => ({
+            ...v,
+            patientName: v.patientName && !/^Patient #/i.test(v.patientName)
+              ? v.patientName
+              : (resolvePatientName(v.patient) || v.patientName),
+          }));
+          setVisits(mapped);
+          setPage(1);
+          setLoading(false);
+        }
+      }
+    } catch { /* ignore */ }
+    didHydrateFromLocal.current = true;
+  }, []);
+
   // Hydrate from cache if available; otherwise fetch
   useEffect(() => {
     if (!cacheLoaded) return;
@@ -834,10 +860,22 @@ const Visits = () => {
     loadVisits();
   }, [cacheLoaded]);
 
-  // Load patients on mount for Add Visit selection (hydrate from cache first)
+  // Load patients on mount for Add Visit selection (hydrate from localStorage or cache first)
   useEffect(() => {
     (async () => {
       if (!cacheLoaded) return;
+      // Try localStorage first for faster initial paint
+      try {
+        const raw = localStorage.getItem('patients_cache');
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr) && arr.length) {
+            setPatients(arr as PatientShort[]);
+            setPatientsLoading(false);
+            return;
+          }
+        }
+      } catch { /* ignore */ }
       // Use cached patients if present
       if (Array.isArray(cachedPatients) && cachedPatients.length > 0) {
         setPatients(cachedPatients.map(p => ({
@@ -879,6 +917,7 @@ const Visits = () => {
           return { id: idStr, fullName: fallback, phone, patientNumber: patNum, type: p?.patient_type ?? p?.type, age, gender, location, registeredAt } as PatientShort;
         });
         setPatients(mapped);
+        try { localStorage.setItem('patients_cache', JSON.stringify(mapped)); } catch { /* ignore */ }
       } catch (_) {
         // ignore
       } finally {
@@ -2238,6 +2277,36 @@ const Visits = () => {
                     const arr: any[] = Array.isArray((selectedVisit as any)?.drugs) ? (selectedVisit as any).drugs : [];
                     if (!arr.length) return (<p className="text-sm text-gray-800">—</p>);
                     const list = (Array.isArray(cachedPharmacy) ? cachedPharmacy : []) as any[];
+                    const resolveName = (d: any): string => {
+                      // 1) Common backend fields
+                      const direct = (d?.drug_name || d?.item_name || d?.name || d?.title || '').toString().trim();
+                      if (direct) return direct;
+                      // 2) Nested item objects
+                      if (d?.item && typeof d.item === 'object') {
+                        const viaItem = (d.item.name || d.item.title || '').toString().trim();
+                        if (viaItem) return viaItem;
+                      }
+                      if (d?.drug && typeof d.drug === 'object') {
+                        const viaDrug = (d.drug.name || d.drug.title || '').toString().trim();
+                        if (viaDrug) return viaDrug;
+                      }
+                      if (d?.product && typeof d.product === 'object') {
+                        const viaProduct = (d.product.name || d.product.title || '').toString().trim();
+                        if (viaProduct) return viaProduct;
+                      }
+                      // 3) Lookup from pharmacy cache by id/code/name
+                      const key = d?.item ?? d?.drug_id ?? d?.product_id ?? d?.pharmacy_item;
+                      if (key !== undefined && key !== null) {
+                        const found = list.find(it => String(it?.id) === String(key) || String(it?.code||'') === String(key) || String(it?.sku||'') === String(key));
+                        if (found?.name) return String(found.name);
+                      }
+                      // 4) If item provided as a string that is already a name, try match by name
+                      if (typeof d?.item === 'string') {
+                        const byName = list.find(it => String(it?.name || '').toLowerCase() === String(d.item).toLowerCase());
+                        if (byName?.name) return String(byName.name);
+                      }
+                      return '';
+                    };
                     return (
                       <ul className="divide-y divide-gray-100">
                         {arr.map((d: any, i: number) => {
@@ -2245,15 +2314,8 @@ const Visits = () => {
                           const unit = Number(String(d?.cost || '0').replace(/[^0-9.\-]/g, '')) || 0;
                           const disc = Number(String(d?.discount || '0').replace(/[^0-9.\-]/g, '')) || 0;
                           const total = Math.max(0, (unit * qty) - disc);
-                          const backendName = (d?.drug_name || d?.item_name || d?.name || d?.title || '').toString();
-                          let name = backendName;
-                          if (!name && d?.item) {
-                            const found = list.find(it => Number(it?.id) === Number(d.item));
-                            name = String(found?.name || '');
-                          }
-                          if (!name && d?.item) {
-                            name = `Item #${d.item}`;
-                          }
+                          let name = resolveName(d);
+                          if (!name && d?.item) name = `Item #${d.item}`; // last resort
                           return (
                             <li key={i} className="flex justify-between py-1.5 text-sm text-gray-800">
                               <span>{name || 'Drug'}</span>

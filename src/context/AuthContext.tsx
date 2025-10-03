@@ -57,13 +57,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // TODO: Implement token verification with backend
         const token = localStorage.getItem('token');
         if (token) {
-          // Verify token with backend
-          // const response = await verifyToken(token);
-          // setUser(response.user);
+          // Hydrate cached user to prevent redirect flicker on refresh
+          try {
+            const raw = localStorage.getItem('user');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === 'object') {
+                setUser(parsed as any);
+              }
+            }
+          } catch { /* ignore parse errors */ }
+          // Optionally: verify token with backend here if endpoint is available
+          // If verification fails, we will clear below in catch
         }
       } catch (error) {
         console.error('Auth check failed:', error);
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
       } finally {
         setLoading(false);
       }
@@ -88,6 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         permission: response.user.permission,
       };
       setUser(loggedIn);
+      try { localStorage.setItem('user', JSON.stringify(loggedIn)); } catch {}
       return loggedIn;
     } catch (error) {
       console.error('Login failed:', error);
@@ -98,7 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signupSuperAdmin = async (first_name: string, last_name: string, email: string, password: string) => {
     const response = await authApi.superAdminSignUp({ first_name, last_name, email, password });
     localStorage.setItem('token', response.token);
-    setUser({
+    const u: User = {
       id: response.user.id,
       email: response.user.email,
       role: 'superadmin',
@@ -106,7 +117,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       last_name: response.user.last_name,
       userType: response.user.userType,
       is_email_verified: response.user.is_email_verified,
-    });
+    };
+    setUser(u);
+    try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
   };
 
   const signupAdmin = async (first_name: string, last_name: string, email: string, password: string, permission: 'out-door-patient' | 'over-the-counter') => {
@@ -120,7 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const response = await authApi.verifyEmail({ email, otp });
     localStorage.setItem('token', response.token);
     const normalizedRole = normalizeRole(response.user);
-    setUser({
+    const u: User = {
       id: response.user.id,
       email: response.user.email,
       role: normalizedRole,
@@ -129,7 +142,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userType: response.user.userType,
       is_email_verified: response.user.is_email_verified,
       permission: response.user.permission,
-    });
+    };
+    setUser(u);
+    try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
   };
 
   const resendVerificationOtp = async (email: string) => {
@@ -152,6 +167,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
     navigate('/login');
   };
