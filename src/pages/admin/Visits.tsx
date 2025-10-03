@@ -83,7 +83,7 @@ const Visits = () => {
   const didHydrateFromLocal = useRef(false);
   const didInit = useRef(false);
   const { user } = useAuth();
-  const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, pharmacyItems: cachedPharmacy, loaded: cacheLoaded } = useDataCache();
+  const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, pharmacyItems: cachedPharmacy, setPharmacyItems: setCachedPharmacy, loaded: cacheLoaded } = useDataCache();
   // In-memory detail cache to avoid re-fetch latency
   const visitDetailCacheRef = useRef<Record<string, any>>({});
 
@@ -103,6 +103,23 @@ const Visits = () => {
   ]);
   // Per-row search terms for filtering pharmacy items in the Drugs select
   const [drugSearchTerms, setDrugSearchTerms] = useState<string[]>(['']);
+
+  // If pharmacy cache is empty in this page, fetch items once to enable drug selection
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    if (Array.isArray(cachedPharmacy) && cachedPharmacy.length > 0) return;
+    const base = getApiBase();
+    let aborted = false;
+    (async () => {
+      try {
+        const res = await authFetch(`${base}/pharmacy/all-items`, { method: 'GET' });
+        const data = await res.json().catch(() => ({} as any));
+        const items = (data && (data.items || data.data || [])) as any[];
+        if (!aborted && Array.isArray(items)) setCachedPharmacy(items);
+      } catch { /* ignore */ }
+    })();
+    return () => { aborted = true; };
+  }, [cacheLoaded, cachedPharmacy, setCachedPharmacy]);
 
   const [currentVisit, setCurrentVisit] = useState<Partial<Visit>>({
     patient: undefined,
@@ -1944,7 +1961,9 @@ const Visits = () => {
                             // Try match by exact id or exact name first
                             const byId = list.find(it => String(it?.id) === String(val));
                             const byName = list.find(it => String(it?.name || '').toLowerCase() === val.trim().toLowerCase());
-                            const found = byId || byName || null;
+                            // Then fallback to first substring match
+                            const bySub = !byId && !byName && val.trim() ? list.find(it => String(it?.name || '').toLowerCase().includes(val.trim().toLowerCase())) : null;
+                            const found = byId || byName || bySub || null;
                             if (found) {
                               const newId = String(found.id);
                               const unitPrice = Number((found as any).unit_price ?? (found as any).unitPrice ?? 0) || 0;
@@ -1954,12 +1973,28 @@ const Visits = () => {
                               setDrugSearchTerms(prev => { const copy = [...prev]; copy[idx] = String(found.name || `#${found.id}`); return copy; });
                             }
                           }}
+                          onBlur={(e) => {
+                            // Resolve partial text to a selection on blur
+                            const val = e.target.value;
+                            const list = (Array.isArray(cachedPharmacy) ? cachedPharmacy : []) as any[];
+                            const byId = list.find(it => String(it?.id) === String(val));
+                            const byName = list.find(it => String(it?.name || '').toLowerCase() === val.trim().toLowerCase());
+                            const bySub = !byId && !byName && val.trim() ? list.find(it => String(it?.name || '').toLowerCase().includes(val.trim().toLowerCase())) : null;
+                            const found = byId || byName || bySub || null;
+                            if (found) {
+                              const newId = String(found.id);
+                              const unitPrice = Number((found as any).unit_price ?? (found as any).unitPrice ?? 0) || 0;
+                              const discount = Number((found as any).discount ?? 0) || 0;
+                              setVisitDrugs(prev => prev.map((r,i)=> i===idx ? { ...r, item: newId, cost: unitPrice ? unitPrice.toFixed(2) : r.cost, discount: r.discount === '' || r.discount === '0.00' ? discount.toFixed(2) : r.discount } : r));
+                              setDrugSearchTerms(prev => { const copy = [...prev]; copy[idx] = String(found.name || `#${found.id}`); return copy; });
+                            }
+                          }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="Type to search name or enter ID…"
                         />
                         <datalist id={`drug-list-${idx}`}>
                           {(Array.isArray(cachedPharmacy) ? cachedPharmacy : []).map((it: any) => (
-                            <option key={String(it?.id)} value={String(it?.name || '')}>{String(it?.name || '')}</option>
+                            <option key={String(it?.id)} value={String(it?.name || '')}>{`${String(it?.name || '')} (#${String(it?.id)})`}</option>
                           ))}
                         </datalist>
                       </div>
