@@ -81,6 +81,45 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [consignments, setConsignments] = useState<CachedConsignment[]>([]);
   const [loaded, setLoaded] = useState(false);
 
+  // Quick hydrate from localStorage so pages have immediate data on refresh
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem('patients_cache');
+      if (p) {
+        const arr = JSON.parse(p);
+        if (Array.isArray(arr)) setPatients(arr);
+      }
+    } catch {}
+    try {
+      const v = localStorage.getItem('visits_cache_raw');
+      if (v) {
+        const arr = JSON.parse(v);
+        if (Array.isArray(arr)) setVisits(arr);
+      }
+    } catch {}
+    try {
+      const ph = localStorage.getItem('pharmacy_cache');
+      if (ph) {
+        const arr = JSON.parse(ph);
+        if (Array.isArray(arr)) setPharmacyItems(arr);
+      }
+    } catch {}
+    try {
+      const s = localStorage.getItem('sales_cache');
+      if (s) {
+        const arr = JSON.parse(s);
+        if (Array.isArray(arr)) setSales(arr);
+      }
+    } catch {}
+    try {
+      const c = localStorage.getItem('consignments_cache');
+      if (c) {
+        const arr = JSON.parse(c);
+        if (Array.isArray(arr)) setConsignments(arr);
+      }
+    } catch {}
+  }, []);
+
   const preload = async () => {
     const base = getApiBase();
     const token = localStorage.getItem('token');
@@ -122,6 +161,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             } as CachedPatient;
           });
           setPatients(mapped);
+          try { localStorage.setItem('patients_cache', JSON.stringify(mapped)); } catch {}
         } catch {}
       })());
 
@@ -133,6 +173,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const data = await res.json().catch(() => ({} as any));
           const arr: any[] = Array.isArray((data as any)?.visits) ? (data as any).visits : (Array.isArray((data as any)?.data) ? (data as any).data : []);
           setVisits(arr);
+          try { localStorage.setItem('visits_cache_raw', JSON.stringify(arr)); } catch {}
         } catch {}
       })());
 
@@ -141,7 +182,9 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try {
           const res = await authFetch(`${base}/pharmacy/all-items`, { method: 'GET' });
           const data = await res.json().catch(() => ({} as any));
-          setPharmacyItems((data && (data.items || data.data || [])) as any[]);
+          const items = (data && (data.items || data.data || [])) as any[];
+          setPharmacyItems(items);
+          try { localStorage.setItem('pharmacy_cache', JSON.stringify(items)); } catch {}
         } catch {}
       })());
 
@@ -151,7 +194,9 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           let res = await authFetch(`${base}/pharmacy/all-sales`, { method: 'GET' });
           if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/pharmacy/all-sales/`, { method: 'GET' });
           const data = await res.json().catch(() => ({} as any));
-          setSales((data && (data.items || data.data || [])) as any[]);
+          const arr = (data && (data.items || data.data || [])) as any[];
+          setSales(arr);
+          try { localStorage.setItem('sales_cache', JSON.stringify(arr)); } catch {}
         } catch {}
       })());
 
@@ -167,7 +212,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               const res = await authFetch(u, { method: 'GET' });
               const data = await res.json().catch(() => ({} as any));
               const arr: any[] = Array.isArray((data as any)?.inventories) ? (data as any).inventories : [];
-              if (res.ok) { setConsignments(arr); break; }
+              if (res.ok) { setConsignments(arr); try { localStorage.setItem('consignments_cache', JSON.stringify(arr)); } catch {} break; }
             } catch {}
           }
         } catch {}
