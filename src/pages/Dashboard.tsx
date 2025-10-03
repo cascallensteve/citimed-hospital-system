@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDataCache } from '../context/DataCacheContext';
 import { 
   Bars3Icon as MenuAlt2Icon, 
   XMarkIcon as XIcon,
@@ -20,6 +21,7 @@ type NavItem = { name: string; to: string; icon: any };
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const { loaded: cacheLoaded, patients: cachePatients, pharmacyItems: cachePharmacyItems, visits: cacheVisits, sales: cacheSales, refreshAll } = useDataCache();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -91,6 +93,102 @@ const Dashboard = () => {
       today: revenueToday,
     }
   };
+
+  // Prefill cards from cached datasets for instant, accurate values (works in deployed builds too)
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    // Patients
+    if (Array.isArray(cachePatients)) {
+      setPatientsTotal(cachePatients.length);
+      const today = new Date();
+      const isSameDay = (d: Date, e: Date) => d.getFullYear() === e.getFullYear() && d.getMonth() === e.getMonth() && d.getDate() === e.getDate();
+      const newToday = cachePatients.filter((p: any) => {
+        const created = p?.registeredAt || p?.created_at || p?.createdAt || p?.timestamp;
+        if (!created) return false;
+        const dt = new Date(created);
+        return isSameDay(dt, today);
+      }).length;
+      setPatientsNewToday(newToday);
+    }
+    // Pharmacy items
+    if (Array.isArray(cachePharmacyItems)) {
+      setPharmacyItemsCount(cachePharmacyItems.length || 0);
+    }
+    // Visits-derived stats
+    if (Array.isArray(cacheVisits)) {
+      const now = new Date();
+      const startOfWeek = new Date(now);
+      startOfWeek.setHours(0,0,0,0);
+      const day = startOfWeek.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day; // Monday start
+      startOfWeek.setDate(startOfWeek.getDate() + diffToMonday);
+      const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      const inThisWeek = (d: Date) => d >= startOfWeek && d <= now;
+
+      let todayCount = 0;
+      let weekCount = 0;
+      let todayChargesSum = 0;
+      let outstanding = 0;
+      cacheVisits.forEach((v: any) => {
+        const ts = v?.timestamp || v?.created_at || v?.date || v?.createdAt;
+        const dt = ts ? new Date(ts) : null;
+        if (dt) {
+          if (isSameDay(dt, now)) todayCount += 1;
+          if (inThisWeek(dt)) weekCount += 1;
+        }
+        if (dt && isSameDay(dt, now)) {
+          todayChargesSum += moneyToNumber(v?.charges);
+        }
+        const balNum = Number(v?.balance || 0);
+        if (isFinite(balNum) && balNum > 0) outstanding += balNum;
+      });
+      setVisitsToday(todayCount);
+      setVisitsThisWeek(weekCount);
+      if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
+        setVisitsRevenueToday(todayChargesSum);
+      }
+      setOutstandingBalance(outstanding);
+    }
+    // Pharmacy sales (today)
+    if (Array.isArray(cacheSales)) {
+      const today = new Date();
+      const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      let total = 0;
+      let count = 0;
+      for (const s of cacheSales) {
+        const ts = s?.timestamp || s?.created_at || s?.date || s?.createdAt;
+        const dt = ts ? new Date(ts) : null;
+        if (!dt || !isSameDay(dt, today)) continue;
+        const lineTotal = (() => {
+          const t = (s?.total_amount ?? s?.total ?? '').toString();
+          const n = parseFloat(t);
+          if (!isNaN(n) && isFinite(n)) return n;
+          if (Array.isArray(s?.items)) {
+            return s.items.reduce((acc: number, it: any) => acc + (parseFloat((it.total_price ?? '0').toString()) || 0), 0);
+          }
+          return 0;
+        })();
+        total += lineTotal;
+        count += 1;
+      }
+      setRevenueToday(total);
+      setPharmacyRevenueToday(total);
+      setTransactionsToday(count);
+    }
+  }, [cacheLoaded, cachePatients, cachePharmacyItems, cacheVisits, cacheSales, user?.role, user?.permission]);
+
+  // If caches are empty post-load, trigger a background refresh once to populate real values (production-safe)
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    const allEmpty = (!Array.isArray(cachePatients) || cachePatients.length === 0)
+      && (!Array.isArray(cacheVisits) || cacheVisits.length === 0)
+      && (!Array.isArray(cachePharmacyItems) || cachePharmacyItems.length === 0)
+      && (!Array.isArray(cacheSales) || cacheSales.length === 0);
+    const hasToken = !!localStorage.getItem('token');
+    if (hasToken && allEmpty) {
+      refreshAll().catch(() => {});
+    }
+  }, [cacheLoaded, cachePatients, cacheVisits, cachePharmacyItems, cacheSales, refreshAll]);
 
   // Fetch real patients total for Overview
   useEffect(() => {
