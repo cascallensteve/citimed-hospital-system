@@ -19,6 +19,7 @@ export type CachedVisit = any; // pages map to their own display types; store ra
 export type CachedPharmacyItem = any;
 export type CachedSale = any;
 export type CachedConsignment = any;
+export type CachedQuickVisit = any;
 
 export type DataCache = {
   // data
@@ -27,6 +28,7 @@ export type DataCache = {
   pharmacyItems: CachedPharmacyItem[];
   sales: CachedSale[];
   consignments: CachedConsignment[];
+  quickVisits: CachedQuickVisit[];
   loaded: boolean; // true when initial preload finished (success or fail)
   // actions
   refreshAll: () => Promise<void>;
@@ -35,6 +37,7 @@ export type DataCache = {
   setPharmacyItems: React.Dispatch<React.SetStateAction<CachedPharmacyItem[]>>;
   setSales: React.Dispatch<React.SetStateAction<CachedSale[]>>;
   setConsignments: React.Dispatch<React.SetStateAction<CachedConsignment[]>>;
+  setQuickVisits: React.Dispatch<React.SetStateAction<CachedQuickVisit[]>>;
 };
 
 const DataCacheContext = createContext<DataCache | undefined>(undefined);
@@ -79,6 +82,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [pharmacyItems, setPharmacyItems] = useState<CachedPharmacyItem[]>([]);
   const [sales, setSales] = useState<CachedSale[]>([]);
   const [consignments, setConsignments] = useState<CachedConsignment[]>([]);
+  const [quickVisits, setQuickVisits] = useState<CachedQuickVisit[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   // Quick hydrate from localStorage so pages have immediate data on refresh
@@ -116,6 +120,13 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (c) {
         const arr = JSON.parse(c);
         if (Array.isArray(arr)) setConsignments(arr);
+      }
+    } catch {}
+    try {
+      const qv = localStorage.getItem('quick_visits_cache');
+      if (qv) {
+        const arr = JSON.parse(qv);
+        if (Array.isArray(arr)) setQuickVisits(arr);
       }
     } catch {}
   }, []);
@@ -174,6 +185,23 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const arr: any[] = Array.isArray((data as any)?.visits) ? (data as any).visits : (Array.isArray((data as any)?.data) ? (data as any).data : []);
           setVisits(arr);
           try { localStorage.setItem('visits_cache_raw', JSON.stringify(arr)); } catch {}
+        } catch {}
+      })());
+
+      // Quick Visits
+      tasks.push((async () => {
+        try {
+          const urls = [`${base}/visits/all-quick-visits`, `${base}/visits/all-quick-visits/`];
+          for (const u of urls) {
+            try {
+              const res = await authFetch(u, { method: 'GET' });
+              const data = await res.json().catch(() => ({} as any));
+              const arr: any[] = Array.isArray((data as any)?.quick_visits)
+                ? (data as any).quick_visits
+                : (Array.isArray((data as any)?.items) ? (data as any).items : (Array.isArray((data as any)?.data) ? (data as any).data : []));
+              if (res.ok) { setQuickVisits(arr); try { localStorage.setItem('quick_visits_cache', JSON.stringify(arr)); } catch {} break; }
+            } catch {}
+          }
         } catch {}
       })());
 
@@ -244,6 +272,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     pharmacyItems,
     sales,
     consignments,
+    quickVisits,
     loaded,
     refreshAll,
     setPatients,
@@ -251,7 +280,8 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setPharmacyItems,
     setSales,
     setConsignments,
-  }), [patients, visits, pharmacyItems, sales, consignments, loaded]);
+    setQuickVisits,
+  }), [patients, visits, pharmacyItems, sales, consignments, quickVisits, loaded]);
 
   return (
     <DataCacheContext.Provider value={value}>
