@@ -285,6 +285,7 @@ const Visits = () => {
             ${itemsHtml}
           </tbody>
         </table>
+        <div class="row" style="margin-top:6px"><span class="label">Total Charges</span><span class="value">${fmtKES(charges)}</span></div>
         <div class="row" style="margin-top:6px"><span class="label">Paid</span><span class="value">${fmtKES(paid)}</span></div>
         <div class="row"><span class="label">Balance</span><span class="value">${fmtKES(balance)}</span></div>
       </div>
