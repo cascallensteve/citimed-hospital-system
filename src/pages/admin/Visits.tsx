@@ -84,6 +84,8 @@ const Visits = () => {
   const didInit = useRef(false);
   const { user } = useAuth();
   const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, pharmacyItems: cachedPharmacy, loaded: cacheLoaded } = useDataCache();
+  // In-memory detail cache to avoid re-fetch latency
+  const visitDetailCacheRef = useRef<Record<string, any>>({});
 
   // Patients for linking visits
   const [patients, setPatients] = useState<PatientShort[]>([]);
@@ -168,6 +170,37 @@ const Visits = () => {
   const currentPage = Math.min(page, totalPages);
   const paginatedVisits = sortedVisits.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  // Hydrate visit detail cache from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('visit_detail_cache');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') visitDetailCacheRef.current = parsed;
+      }
+    } catch {}
+  }, []);
+
+  // Background prefetch for visible visits to make opening details instant
+  useEffect(() => {
+    if (!paginatedVisits || paginatedVisits.length === 0) return;
+    const toFetch = paginatedVisits
+      .map(v => String(v.id))
+      .filter(id => !visitDetailCacheRef.current[id]);
+    if (toFetch.length === 0) return;
+
+    let aborted = false;
+    const CONCURRENCY = 4;
+    const run = async () => {
+      for (let i = 0; i < toFetch.length && !aborted; i += CONCURRENCY) {
+        const batch = toFetch.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(id => fetchVisitDetailRaw(id).catch(() => null)));
+      }
+    };
+    run();
+    return () => { aborted = true; };
+  }, [paginatedVisits]);
+
   // Auto-save functionality
   useEffect(() => {
     if (currentVisit.complaints || currentVisit.history) {
@@ -203,6 +236,9 @@ const Visits = () => {
   // Fetch a visit detail raw (without mutating state) for printing
   const fetchVisitDetailRaw = async (visitId: string) => {
     try {
+      // Serve from cache if available for instant load
+      const cached = visitDetailCacheRef.current[String(visitId)];
+      if (cached) return cached;
       const base = getApiBase();
       // Try both GET and POST, with and without trailing slash
       let res = await authFetch(`${base}/visits/visit-detail/${visitId}/`, { method: 'GET' });
@@ -213,6 +249,11 @@ const Visits = () => {
       }
       const data = await res.json().catch(async () => ({ raw: cleanErrorText(await res.text().catch(()=> '')) }));
       const visit = (data && (data.visit || (data.Visit) || null));
+      if (visit) {
+        // Persist to cache for subsequent instant loads
+        visitDetailCacheRef.current[String(visitId)] = visit;
+        try { localStorage.setItem('visit_detail_cache', JSON.stringify(visitDetailCacheRef.current)); } catch {}
+      }
       return visit || null;
     } catch {
       return null;
