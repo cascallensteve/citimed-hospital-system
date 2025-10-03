@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
   PlusIcon, 
@@ -73,6 +73,8 @@ const Pharmacy = () => {
   const [consignments, setConsignments] = useState<Array<any>>([]);
   const [showConsignmentDetail, setShowConsignmentDetail] = useState(false);
   const [consignmentDetail, setConsignmentDetail] = useState<any | null>(null);
+  const [consignmentLoading, setConsignmentLoading] = useState(false);
+  const consignmentCacheRef = useRef<Map<number, any>>(new Map());
   const [selectedItem, setSelectedItem] = useState<PharmacyItem | null>(null);
   const [editItem, setEditItem] = useState<PharmacyItem | null>(null);
   const canAddConsignment = (user?.role === 'superadmin') || ((user as any)?.permission === 'over-the-counter');
@@ -1090,24 +1092,40 @@ const Pharmacy = () => {
 
   const openConsignmentDetail = async (consignmentId: number) => {
     try {
+      // Open modal immediately with spinner
+      setShowConsignmentDetail(true);
+      setConsignmentLoading(true);
+      setConsignmentDetail((prev) => prev && Number(prev.id) === Number(consignmentId) ? prev : null);
+
+      // Serve from cache if available
+      const cached = consignmentCacheRef.current.get(Number(consignmentId));
+      if (cached) {
+        setConsignmentDetail(cached);
+        setConsignmentLoading(false);
+        return;
+      }
+
       const base = getApiBase();
-      // Try both URL variants and both methods (some backends require GET)
+      // Prefer fastest combos first: GET without slash, then with; then POST variants
       const urls = [
-        `${base}/pharmacy/consignment-detail/${consignmentId}/`,
         `${base}/pharmacy/consignment-detail/${consignmentId}`,
+        `${base}/pharmacy/consignment-detail/${consignmentId}/`,
       ];
       const methods: Array<'GET' | 'POST'> = ['GET', 'POST'];
-      for (const u of urls) {
-        for (const method of methods) {
+
+      // Timeout + abort to avoid long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      for (const method of methods) {
+        for (const u of urls) {
           try {
-            const res = await authFetch(u, { method });
+            const res = await authFetch(u, { method, signal: controller.signal } as any);
             const text = await res.text().catch(() => '');
             let data: any = {};
             try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
             const inv = (data && (data.inventory || data.consignment || data)) as any;
             if (res.ok && inv && (inv.id || Array.isArray(inv.consignment_items))) {
-              // If API didn't include a human uploader_name, and this consignment's uploader matches
-              // the currently logged-in user, fill it from user context so the UI shows a name.
               try {
                 if (!resolveUploaderName(inv) || resolveUploaderName(inv) === '-') {
                   const uid = Number(inv?.uploader);
@@ -1118,7 +1136,6 @@ const Pharmacy = () => {
                     const full = [first, last].filter(Boolean).join(' ').trim() || (((user as any)?.full_name) || (user as any)?.fullName || (user as any)?.name || (user as any)?.username || '').toString();
                     if (full) (inv as any).uploader_name = full;
                   }
-                  // If still no name, try fetching by uid and populate
                   if ((!inv as any)?.uploader_name || resolveUploaderName(inv) === '-') {
                     const uid2 = Number(inv?.uploader);
                     if (uid2) {
@@ -1129,22 +1146,36 @@ const Pharmacy = () => {
                 }
               } catch { /* ignore name fill errors */ }
               setConsignmentDetail(inv);
-              setShowConsignmentDetail(true);
+              consignmentCacheRef.current.set(Number(consignmentId), inv);
+              clearTimeout(timeoutId);
+              setConsignmentLoading(false);
               return;
             }
-            // If 404/405 on this combo, continue to next combination
-            if (res.status === 404 || res.status === 405) continue;
-            // For 401/403, surface a clearer message and stop trying further methods on same URL
             if (res.status === 401 || res.status === 403) {
               toast.error('Not authorized to view this consignment. Please ensure you are logged in with the correct permissions.');
-              continue;
+              // Stop trying further on auth errors
+              clearTimeout(timeoutId);
+              setConsignmentLoading(false);
+              return;
             }
-          } catch { /* try next method/url */ }
+          } catch (err) {
+            // If aborted due to timeout, stop trying further
+            if ((err as any)?.name === 'AbortError') {
+              toast.error('Request timed out. Please try again.');
+              clearTimeout(timeoutId);
+              setConsignmentLoading(false);
+              return;
+            }
+            // else try next combo
+          }
         }
       }
+      clearTimeout(timeoutId);
       throw new Error('Consignment not found');
     } catch (e) {
       toast.error(cleanErrorText((e as Error).message));
+    } finally {
+      setConsignmentLoading(false);
     }
   };
 

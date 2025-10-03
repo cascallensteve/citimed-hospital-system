@@ -57,7 +57,7 @@ const Visits = () => {
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [loading, setLoading] = useState(true);
-  const [, setDetailLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteVisit, setConfirmDeleteVisit] = useState<Visit | null>(null);
   // Edit state
@@ -77,7 +77,7 @@ const Visits = () => {
 
   const [visits, setVisits] = useState<Visit[]>([]);
   const { user } = useAuth();
-  const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, loaded: cacheLoaded } = useDataCache();
+  const { visits: cachedVisits, setVisits: setCachedVisits, patients: cachedPatients, pharmacyItems: cachedPharmacy, loaded: cacheLoaded } = useDataCache();
 
   // Patients for linking visits
   const [patients, setPatients] = useState<PatientShort[]>([]);
@@ -86,6 +86,15 @@ const Visits = () => {
   const [selectedPatient, setSelectedPatient] = useState<PatientShort | null>(null);
   // Search bar for Patients tab table
   const [patientsListSearch, setPatientsListSearch] = useState('');
+  // New: Services and Drugs lines for visit creation
+  const [visitServices, setVisitServices] = useState<Array<{ title: string; description: string; cost: string }>>([
+    { title: '', description: '', cost: '' },
+  ]);
+  const [visitDrugs, setVisitDrugs] = useState<Array<{ item: string; cost: string; quantity: string; discount: string }>>([
+    { item: '', cost: '', quantity: '1', discount: '0.00' },
+  ]);
+  // Per-row search terms for filtering pharmacy items in the Drugs select
+  const [drugSearchTerms, setDrugSearchTerms] = useState<string[]>(['']);
 
   const [currentVisit, setCurrentVisit] = useState<Partial<Visit>>({
     patient: undefined,
@@ -185,15 +194,67 @@ const Visits = () => {
     ).toString();
   };
 
+  // Fetch a visit detail raw (without mutating state) for printing
+  const fetchVisitDetailRaw = async (visitId: string) => {
+    try {
+      const base = getApiBase();
+      // Try both GET and POST, with and without trailing slash
+      let res = await authFetch(`${base}/visits/visit-detail/${visitId}/`, { method: 'GET' });
+      if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/visits/visit-detail/${visitId}`, { method: 'GET' });
+      if ((res.status === 404 || res.status === 405) && res.ok === false) {
+        res = await authFetch(`${base}/visits/visit-detail/${visitId}/`, { method: 'POST' });
+        if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/visits/visit-detail/${visitId}`, { method: 'POST' });
+      }
+      const data = await res.json().catch(async () => ({ raw: cleanErrorText(await res.text().catch(()=> '')) }));
+      const visit = (data && (data.visit || (data.Visit) || null));
+      return visit || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Build item lines for receipt from a visit detail
+  const buildReceiptLines = (detail: any) => {
+    const lines: Array<{ name: string; price: number }> = [];
+    // Services: title + cost
+    const services: any[] = Array.isArray(detail?.services) ? detail.services : [];
+    services.forEach((s: any) => {
+      const title = (s?.title || s?.name || 'Service').toString();
+      const cost = moneyToNumber(s?.cost);
+      if (title && cost > 0) lines.push({ name: title, price: cost });
+    });
+    // Drugs: item name + (unit*qty - discount) [no quantity shown]
+    const drugs: any[] = Array.isArray(detail?.drugs) ? detail.drugs : [];
+    drugs.forEach((d: any) => {
+      const qty = Number(d?.quantity || 0) || 0;
+      const unit = moneyToNumber(d?.cost);
+      const disc = moneyToNumber(d?.discount);
+      const total = Math.max(0, (unit * qty) - disc);
+      // Resolve name from backend or cached pharmacy
+      const backendName = (d?.item_name || d?.name || d?.title || '').toString();
+      let name = backendName;
+      if (!name && d?.item) {
+        const found = (Array.isArray(cachedPharmacy) ? cachedPharmacy : []).find((it: any) => Number(it?.id) === Number(d.item));
+        name = String(found?.name || `#${d.item}`);
+      }
+      if (name && total > 0) lines.push({ name, price: total });
+    });
+    return lines;
+  };
+
   // Print a receipt for a specific visit from the list actions
-  const printVisitReceiptFor = (v: Visit) => {
+  const printVisitReceiptFor = async (v: Visit) => {
     const fmtKES = (val: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(val || 0);
+    // Load detail to list items
+    const detail = await fetchVisitDetailRaw(v.id);
+    const lines = detail ? buildReceiptLines(detail) : [];
+    const itemsHtml = lines.length
+      ? lines.map(l => `<tr><td>${l.name}</td><td class="right">${fmtKES(l.price)}</td></tr>`).join('')
+      : `<tr><td>Consultation</td><td class="right">${fmtKES(moneyToNumber(v.charges))}</td></tr>`;
     const charges = moneyToNumber(v.charges);
     const paid = moneyToNumber(v.paid);
     const balance = Math.max(charges - paid, 0);
     const patientName = resolvePatientName(Number(v.patient)) || (v.patientName || '');
-    const patientPhone = resolvePatientPhone(Number(v.patient)) || '';
-    const patientNum = resolvePatientNumber(Number(v.patient)) || (v.patientNumber || '');
     const servedBy = (v as any).uploader_name || (v as any).uploader_info || ((v as any).uploader ? `User #${(v as any).uploader}` : getUserDisplayName());
     const receiptNo = `CCV${String(v.id || '').toString().padStart(3, '0')}`;
     const content = `
@@ -215,10 +276,7 @@ const Visits = () => {
             <tr><th class="text-left">Item</th><th class="right">Price</th></tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Consultation</td>
-              <td class="right">${fmtKES(charges)}</td>
-            </tr>
+            ${itemsHtml}
           </tbody>
         </table>
         <div class="row" style="margin-top:6px"><span class="label">Paid</span><span class="value">${fmtKES(paid)}</span></div>
@@ -232,17 +290,21 @@ const Visits = () => {
   };
 
   // Print a simple receipt for the current paymentVisit using current inputs
-  const printVisitReceipt = () => {
+  const printVisitReceipt = async () => {
     if (!paymentVisit) { toast.error('No visit selected for printing'); return; }
     const fmtKES = (v: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(v || 0);
+    // Load fresh detail to list items
+    const detail = await fetchVisitDetailRaw(paymentVisit.id);
+    const lines = detail ? buildReceiptLines(detail) : [];
+    const itemsHtml = lines.length
+      ? lines.map(l => `<tr><td>${l.name}</td><td class="right">${fmtKES(l.price)}</td></tr>`).join('')
+      : `<tr><td>Consultation</td><td class="right">${fmtKES(moneyToNumber(paymentVisit.charges))}</td></tr>`;
     const charges = moneyToNumber(paymentVisit.charges);
     const already = moneyToNumber(paymentVisit.paid);
     const incoming = moneyToNumber(paymentAmount);
     const totalPaid = already + incoming;
     const balance = Math.max(charges - totalPaid, 0);
     const patientName = resolvePatientName(Number(paymentVisit.patient)) || (paymentVisit.patientName || '');
-    const patientPhone = resolvePatientPhone(Number(paymentVisit.patient)) || '';
-    const patientNum = resolvePatientNumber(Number(paymentVisit.patient)) || (paymentVisit.patientNumber || '');
     const servedBy = (paymentVisit as any).uploader_name || (paymentVisit as any).uploader_info || getUserDisplayName();
     const receiptNo = `CCV${String(paymentVisit.id || '').toString().padStart(3, '0')}`;
     const content = `
@@ -264,10 +326,7 @@ const Visits = () => {
             <tr><th class="text-left">Item</th><th class="right">Price</th></tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Consultation</td>
-              <td class="right">${fmtKES(charges)}</td>
-            </tr>
+            ${itemsHtml}
           </tbody>
         </table>
         <div class="row" style="margin-top:6px"><span class="label">Paid</span><span class="value">${fmtKES(totalPaid)}</span></div>
@@ -911,7 +970,7 @@ const Visits = () => {
     if (!req(currentVisit.complaints)) { toast.error('Complaints are required'); return; }
     if (!req(currentVisit.diagnosis)) { toast.error('Diagnosis is required'); return; }
     if (!req(currentVisit.diagnosis_type)) { toast.error('Diagnosis type is required'); return; }
-    if (!req(currentVisit.prescription)) { toast.error('Prescriptions are required'); return; }
+    // Prescriptions removed from required fields per API change
 
     // Normalize money fields to strings with 2 decimals if numeric
     const fmtMoney = (v?: string) => {
@@ -930,31 +989,60 @@ const Visits = () => {
     }
     setSaving(true);
     try {
-      const base = getApiBase();
-      // Build prescriptions_list array from textarea (supports comma or newline separated, strips numbering like "1. ")
-      const rawPresc = (currentVisit.prescription || '').toString();
-      const prescriptions_list = rawPresc
-        .split(/\n|,/)
-        .map(s => s.replace(/^\s*\d+\.?\s*/, '').trim())
-        .filter(Boolean);
+      // Build services and drugs arrays
+      const builtServices = (visitServices || [])
+        .map((s) => {
+          const title = (s.title || '').toString().trim();
+          const description = (s.description || '').toString().trim();
+          const costN = Number((s.cost || '').toString());
+          const cost = Number.isFinite(costN) ? costN.toFixed(2) : undefined;
+          if (!title || !description || !cost) return null;
+          return { title, description, cost };
+        })
+        .filter(Boolean) as Array<{ title: string; description: string; cost: string }>;
+
+      const builtDrugs = (visitDrugs || [])
+        .map((d) => {
+          const itemId = Number((d.item || '').toString());
+          const costN = Number((d.cost || '').toString());
+          const qtyN = Number((d.quantity || '1').toString());
+          const discN = Number((d.discount || '0').toString());
+          if (!Number.isFinite(itemId) || itemId <= 0) return null;
+          const cost = Number.isFinite(costN) ? costN.toFixed(2) : undefined;
+          const quantity = Number.isFinite(qtyN) && qtyN > 0 ? qtyN : undefined;
+          const discount = Number.isFinite(discN) ? discN.toFixed(2) : '0.00';
+          if (!cost || !quantity) return null;
+          return { item: itemId, cost, quantity, discount };
+        })
+        .filter(Boolean) as Array<{ item: number; cost: string; quantity: number; discount: string }>;
+
+      // Compute total charges from drugs only (align with backend example)
+      const computedCharges = (() => {
+        const drg = builtDrugs.reduce((sum, d) => sum + ((parseFloat(d.cost) * (Number(d.quantity)||0)) - (parseFloat(d.discount)||0)), 0);
+        return Math.max(0, drg).toFixed(2);
+      })();
+
       const body = {
+        uploader: Number((user as any)?.id || 0) || undefined,
         patient: Number(currentVisit.patient),
         complaints: (currentVisit.complaints || '').trim(),
+        history: (currentVisit.history || '').trim() || null,
+        allergies: (currentVisit.allergies || '').trim() || null,
+        physical_exam: (currentVisit.physical_exam || '').trim() || null,
+        lab_test: (currentVisit.lab_test || '').trim() || null,
+        lab_results: (currentVisit.lab_results || '').trim() || null,
+        imaging: (currentVisit.imaging || '').trim() || null,
         diagnosis: (currentVisit.diagnosis || '').trim(),
         diagnosis_type: (currentVisit.diagnosis_type || 'short-term').toLowerCase(),
-        prescriptions_list,
-        // Optional clinical fields (backend may accept and store them)
-        history: (currentVisit.history || '').trim() || undefined,
-        allergies: (currentVisit.allergies || '').trim() || undefined,
-        physical_exam: (currentVisit.physical_exam || '').trim() || undefined,
-        lab_test: (currentVisit.lab_test || '').trim() || undefined,
-        lab_results: (currentVisit.lab_results || '').trim() || undefined,
-        imaging: (currentVisit.imaging || '').trim() || undefined,
-        // Optional billing baseline
-        charges: chargesStr || undefined,
+        charges: (chargesStr || computedCharges || '0.00'),
+        services: builtServices,
+        drugs: builtDrugs,
       } as any;
-      let res = await authFetch(`${base}/visits/add-visit`, { method: 'POST', body: JSON.stringify(body) });
-      if (res.status === 404 || res.status === 405) res = await authFetch(`${base}/visits/add-visit/`, { method: 'POST', body: JSON.stringify(body) });
+
+      // Use the provided endpoint host for add-visit
+      const addVisitBase = 'https://citimed-api-git-develop-billys-projects-f7b2d4d6.vercel.app';
+      let res = await authFetch(`${addVisitBase}/visits/add-visit`, { method: 'POST', body: JSON.stringify(body) });
+      if (res.status === 404 || res.status === 405) res = await authFetch(`${addVisitBase}/visits/add-visit/`, { method: 'POST', body: JSON.stringify(body) });
       const data = await res.json().catch(async () => ({ raw: cleanErrorText(await res.text().catch(()=> '')) }));
       if (!res.ok) {
         // Compose helpful error message
@@ -1000,6 +1088,8 @@ const Visits = () => {
       setSelectedPatient(null);
       setPatientSearch('');
       setCurrentVisit({ patient: undefined, complaints: '', history: '', allergies: '', physical_exam: '', lab_test: '', lab_results: '', imaging: '', diagnosis: '', diagnosis_type: 'chronic', prescription: '', charges: '' });
+      setVisitServices([{ title: '', description: '', cost: '' }]);
+      setVisitDrugs([{ item: '', cost: '', quantity: '1', discount: '0.00' }]);
     } catch (e) {
       console.error('Add visit failed:', e);
       toast.error(cleanErrorText((e as Error).message));
@@ -1690,34 +1780,182 @@ const Visits = () => {
                 </div>
               </div>
 
-              {/* Prescriptions */}
-              <div className="space-y-4">
-                <h4 className="text-lg font-medium text-gray-900">Prescriptions</h4>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Add Prescription Items (comma-separated)</label>
-                  <textarea
-                    value={currentVisit.prescription || ''}
-                    onChange={(e)=>handleInputChange('prescription' as any, e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={"Amlodipine 10mg OD, Paracetamol 1g TDS, ..."}
-                  />
-                  {currentVisit.prescription && (
-                    <div className="mt-1 text-right">
-                      <button type="button" onClick={()=>handleInputChange('prescription' as any, '')} className="text-sm text-red-600 hover:text-red-800">Clear</button>
+              {/* Prescriptions removed per API change */}
+
+              {/* Services */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-medium text-gray-900">Services</h4>
+                  <button
+                    type="button"
+                    onClick={()=> setVisitServices(prev => [...prev, { title: '', description: '', cost: '' }])}
+                    className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm"
+                  >Add Service</button>
+                </div>
+                <div className="space-y-2">
+                  {visitServices.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-4">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                        <input
+                          value={row.title}
+                          onChange={(e)=> setVisitServices(prev => prev.map((r,i)=> i===idx ? { ...r, title: e.target.value } : r))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="e.g. Consultation"
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                        <input
+                          value={row.description}
+                          onChange={(e)=> setVisitServices(prev => prev.map((r,i)=> i===idx ? { ...r, description: e.target.value } : r))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="e.g. Brief service description"
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Cost</label>
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={row.cost}
+                          onChange={(e)=> setVisitServices(prev => prev.map((r,i)=> i===idx ? { ...r, cost: e.target.value } : r))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="col-span-2 flex justify-end">
+                        <button type="button" onClick={()=> setVisitServices(prev => prev.filter((_,i)=> i!==idx))} className="px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm">Remove</button>
+                      </div>
                     </div>
-                  )}
+                  ))}
+                </div>
+              </div>
+
+              {/* Drugs */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-medium text-gray-900">Drugs</h4>
+                  <button
+                    type="button"
+                    onClick={()=> { setVisitDrugs(prev => [...prev, { item: '', cost: '', quantity: '1', discount: '0.00' }]); setDrugSearchTerms(prev => [...prev, '']); }}
+                    className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm"
+                  >Add Drug</button>
+                </div>
+                <div className="space-y-2">
+                  {visitDrugs.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Drug</label>
+                        {/* Searchable combobox using datalist */}
+                        <input
+                          list={`drug-list-${idx}`}
+                          value={drugSearchTerms[idx] || ''}
+                          onChange={(e)=> {
+                            const val = e.target.value;
+                            setDrugSearchTerms(prev => { const copy = [...prev]; copy[idx] = val; return copy; });
+                            const list = (Array.isArray(cachedPharmacy) ? cachedPharmacy : []) as any[];
+                            // Try match by exact id or exact name first
+                            const byId = list.find(it => String(it?.id) === String(val));
+                            const byName = list.find(it => String(it?.name || '').toLowerCase() === val.trim().toLowerCase());
+                            const found = byId || byName || null;
+                            if (found) {
+                              const newId = String(found.id);
+                              const unitPrice = Number((found as any).unit_price ?? (found as any).unitPrice ?? 0) || 0;
+                              const discount = Number((found as any).discount ?? 0) || 0;
+                              setVisitDrugs(prev => prev.map((r,i)=> i===idx ? { ...r, item: newId, cost: unitPrice ? unitPrice.toFixed(2) : r.cost, discount: r.discount === '' || r.discount === '0.00' ? discount.toFixed(2) : r.discount } : r));
+                              // Force the visible field to show the drug name, not the ID
+                              setDrugSearchTerms(prev => { const copy = [...prev]; copy[idx] = String(found.name || `#${found.id}`); return copy; });
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Type to search name or enter ID…"
+                        />
+                        <datalist id={`drug-list-${idx}`}>
+                          {(Array.isArray(cachedPharmacy) ? cachedPharmacy : []).map((it: any) => (
+                            <option key={String(it?.id)} value={String(it?.name || '')}>{String(it?.name || '')}</option>
+                          ))}
+                        </datalist>
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Unit Cost</label>
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={row.cost}
+                          onChange={(e)=> setVisitDrugs(prev => prev.map((r,i)=> i===idx ? { ...r, cost: e.target.value } : r))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Qty</label>
+                        <input
+                          type="number" min="1"
+                          value={row.quantity}
+                          onChange={(e)=> setVisitDrugs(prev => prev.map((r,i)=> i===idx ? { ...r, quantity: e.target.value } : r))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="1"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Discount</label>
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={row.discount}
+                          onChange={(e)=> setVisitDrugs(prev => prev.map((r,i)=> i===idx ? { ...r, discount: e.target.value } : r))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Line Total</label>
+                        <input
+                          readOnly
+                          value={(() => {
+                            const unit = parseFloat(row.cost || '0') || 0;
+                            const qty = parseFloat(row.quantity || '0') || 0;
+                            const disc = parseFloat(row.discount || '0') || 0;
+                            const total = Math.max(0, (unit * qty) - disc);
+                            return total.toFixed(2);
+                          })()}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700"
+                        />
+                      </div>
+                      <div className="col-span-2 flex justify-end">
+                        <button type="button" onClick={()=> { setVisitDrugs(prev => prev.filter((_,i)=> i!==idx)); setDrugSearchTerms(prev => prev.filter((_,i)=> i!==idx)); }} className="px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm">Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Totals preview */}
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+                <div className="flex justify-between">
+                  <span>Services subtotal</span>
+                  <span className="font-medium">{
+                    visitServices.reduce((sum, s)=> sum + ((parseFloat(s.cost||'0')||0)), 0).toFixed(2)
+                  }</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Drugs subtotal</span>
+                  <span className="font-medium">{
+                    visitDrugs.reduce((sum, d)=> sum + (((parseFloat(d.cost||'0')||0) * (parseFloat(d.quantity||'0')||0)) - (parseFloat(d.discount||'0')||0)), 0).toFixed(2)
+                  }</span>
                 </div>
               </div>
 
               {/* Charges at the end */}
               <div className="space-y-2 mt-6">
-                <label className="block text-sm font-medium text-gray-700">Charges *</label>
+                <label className="block text-sm font-medium text-gray-700">Charges (auto)</label>
                 <input
                   type="text"
-                  value={currentVisit.charges || ''}
-                  onChange={(e)=>handleInputChange('charges' as any, sanitizeIntegerCurrencyInput(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={(() => {
+                    const servicesTotal = visitServices.reduce((sum, s)=> sum + ((parseFloat(s.cost||'0')||0)), 0);
+                    const drugsTotal = visitDrugs.reduce((sum, d)=> sum + (((parseFloat(d.cost||'0')||0) * (parseFloat(d.quantity||'0')||0)) - (parseFloat(d.discount||'0')||0)), 0);
+                    return (servicesTotal + drugsTotal).toFixed(2);
+                  })()}
+                  readOnly
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700"
                   placeholder="KSH"
                   inputMode="numeric"
                 />
@@ -1850,10 +2088,22 @@ const Visits = () => {
             <div className="px-6 py-5">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">Visit Details</h3>
+                {detailLoading && (
+                  <div className="ml-3 inline-flex items-center text-blue-600" title="Loading">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                  </div>
+                )}
                 <button onClick={() => setSelectedVisit(null)} className="px-2.5 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white">
                   <XMarkIcon className="h-5 w-5" />
                 </button>
               </div>
+
+              {detailLoading && (
+                <div className="mt-4 p-3 rounded-md bg-blue-50 text-blue-700 text-sm">Fetching latest details…</div>
+              )}
 
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border border-gray-100 p-4">

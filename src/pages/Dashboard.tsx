@@ -59,7 +59,11 @@ const Dashboard = () => {
   const [visitsToday, setVisitsToday] = useState<number>(0);
   const [visitsThisWeek, setVisitsThisWeek] = useState<number>(0);
   const [revenueToday, setRevenueToday] = useState<number>(0);
+  const [visitsRevenueToday, setVisitsRevenueToday] = useState<number>(0);
+  const [pharmacyRevenueToday, setPharmacyRevenueToday] = useState<number>(0);
+  const [quickVisitsRevenueToday, setQuickVisitsRevenueToday] = useState<number>(0);
   const [outstandingBalance, setOutstandingBalance] = useState<number>(0);
+  const [supplierOutstanding, setSupplierOutstanding] = useState<number>(0);
   const [transactionsToday, setTransactionsToday] = useState<number>(0);
   const [totalSalesCount, setTotalSalesCount] = useState<number>(0);
 
@@ -167,7 +171,7 @@ const Dashboard = () => {
 
           let todayCount = 0;
           let weekCount = 0;
-          let todayRevenue = 0;
+          let todayChargesSum = 0;
           let outstanding = 0;
           arr.forEach((v: any) => {
             const ts = v?.timestamp || v?.created_at || v?.date || v?.createdAt;
@@ -176,14 +180,20 @@ const Dashboard = () => {
               if (isSameDay(dt, now)) todayCount += 1;
               if (inThisWeek(dt)) weekCount += 1;
             }
-            const paidNum = Number(v?.paid || 0);
             const balNum = Number(v?.balance || 0);
-            if (dt && isSameDay(dt, now)) todayRevenue += (isFinite(paidNum) ? paidNum : 0);
+            if (dt && isSameDay(dt, now)) {
+              // Sum charges for visits revenue card as requested
+              const charge = moneyToNumber(v?.charges);
+              todayChargesSum += charge;
+            }
             if (isFinite(balNum) && balNum > 0) outstanding += balNum;
           });
           setVisitsToday(todayCount);
           setVisitsThisWeek(weekCount);
-          setRevenueToday(prev => (user?.permission === 'over-the-counter' ? prev : todayRevenue));
+          // Capture visits revenue today for overview cards (only for clinical roles)
+          if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
+            setVisitsRevenueToday(todayChargesSum);
+          }
           setOutstandingBalance(outstanding);
         }
       } catch {/* ignore */}
@@ -194,7 +204,7 @@ const Dashboard = () => {
     return () => { aborted = true; };
   }, [user?.role, user?.permission]);
 
-  // For over-the-counter admins: fetch today's pharmacy sales to populate revenueToday and transactionsToday
+  // Fetch today's pharmacy sales to populate pharmacyRevenueToday (for OTC and Superadmin)
   useEffect(() => {
     let aborted = false;
     const fetchSalesToday = async () => {
@@ -206,25 +216,147 @@ const Dashboard = () => {
         const isoDay = `${yyyy}-${mm}-${dd}`;
         // Use finance endpoint for aggregated totals
         const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
-        const res = await fetch(`${base}/finances/pharmacy-sales-by-day`, {
+        const token = localStorage.getItem('token') || '';
+        const doFetch = async (scheme: 'Token' | 'Bearer', withSlash: boolean) => fetch(`${base}/finances/pharmacy-sales-by-day${withSlash ? '/' : ''}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('token') ? { Authorization: `Token ${localStorage.getItem('token')}` } : {}) },
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            ...(token ? { Authorization: `${scheme} ${token}` } : {}),
+          },
           body: JSON.stringify({ date: isoDay })
         });
+        let res = await doFetch('Token', false);
+        if (!res.ok && (res.status === 404 || res.status === 405)) res = await doFetch('Token', true);
+        if (!res.ok && (res.status === 401 || res.status === 403)) res = await doFetch('Bearer', true);
         const data = await res.json().catch(() => ({}));
         if (!aborted && res.ok) {
-          const total = Number(data?.total_sum || 0);
-          const salesArr: any[] = Array.isArray(data?.sales) ? data.sales : [];
+          let total = Number(data?.total_sum || 0);
+          let salesArr: any[] = Array.isArray(data?.sales) ? data.sales : (Array.isArray((data as any)?.items) ? (data as any).items : []);
+          // Fallback: if total is 0 but there are sales today under all-sales, recompute
+          if (!total) {
+            try {
+              const doAll = async (scheme: 'Token' | 'Bearer', withSlash: boolean) => fetch(`${base}/pharmacy/all-sales${withSlash ? '/' : ''}`, {
+                headers: { 'Accept': 'application/json', ...(token ? { Authorization: `${scheme} ${token}` } : {}) }
+              });
+              let r2 = await doAll('Token', false);
+              if (!r2.ok && (r2.status === 404 || r2.status === 405)) r2 = await doAll('Token', true);
+              if (!r2.ok && (r2.status === 401 || r2.status === 403)) r2 = await doAll('Bearer', true);
+              const d2 = await r2.json().catch(() => ({}));
+              const arr2: any[] = Array.isArray((d2 as any)?.items) ? (d2 as any).items : (Array.isArray((d2 as any)?.sales) ? (d2 as any).sales : []);
+              const today = new Date();
+              const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+              const sumToday = arr2.reduce((sum, s: any) => {
+                const ts = s?.timestamp || s?.created_at || s?.date || s?.createdAt;
+                const dt = ts ? new Date(ts) : null;
+                const lineTotal = (() => {
+                  const t = (s?.total_amount ?? '').toString();
+                  const n = parseFloat(t);
+                  if (!isNaN(n) && isFinite(n)) return n;
+                  if (Array.isArray(s?.items)) {
+                    return s.items.reduce((acc: number, it: any) => acc + (parseFloat((it.total_price ?? '0').toString()) || 0), 0);
+                  }
+                  return 0;
+                })();
+                return (dt && isSameDay(dt, today)) ? (sum + lineTotal) : sum;
+              }, 0);
+              if (sumToday > 0) {
+                total = sumToday;
+                salesArr = arr2.filter((s: any) => {
+                  const ts = s?.timestamp || s?.created_at || s?.date || s?.createdAt;
+                  const dt = ts ? new Date(ts) : null;
+                  return dt && isSameDay(dt, new Date());
+                });
+              }
+            } catch { /* ignore fallback errors */ }
+          }
           setRevenueToday(total);
+          setPharmacyRevenueToday(total);
           setTransactionsToday(salesArr.length);
         }
       } catch {/* ignore */}
     };
-    if (user?.permission === 'over-the-counter') {
+    if (user?.permission === 'over-the-counter' || user?.role === 'superadmin') {
       fetchSalesToday();
     }
     return () => { aborted = true; };
-  }, [user?.permission]);
+  }, [user?.permission, user?.role]);
+
+  // Fetch today's Quick Visits revenue (sum of today's amounts)
+  useEffect(() => {
+    let aborted = false;
+    const fetchQuickVisits = async () => {
+      try {
+        const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+        const token = localStorage.getItem('token') || '';
+        const doFetch = async (scheme: 'Token' | 'Bearer', withSlash: boolean) => fetch(`${base}/visits/all-quick-visits${withSlash ? '/' : ''}`, {
+          headers: {
+            'Accept': 'application/json',
+            ...(token ? { Authorization: `${scheme} ${token}` } : {}),
+          }
+        });
+        let res = await doFetch('Token', false);
+        if (!res.ok && (res.status === 404 || res.status === 405)) res = await doFetch('Token', true);
+        if (!res.ok && (res.status === 401 || res.status === 403)) res = await doFetch('Bearer', true);
+        const data = await res.json().catch(() => ({}));
+        if (!aborted && res.ok) {
+          const arr: any[] = Array.isArray((data as any)?.quick_visits) ? (data as any).quick_visits : (Array.isArray((data as any)?.items) ? (data as any).items : (Array.isArray((data as any)?.data) ? (data as any).data : []));
+          const today = new Date();
+          const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+          const total = arr.reduce((sum, qv: any) => {
+            const ts = qv?.timestamp || qv?.created_at || qv?.date || qv?.createdAt;
+            const dt = ts ? new Date(ts) : null;
+            const amt = moneyToNumber(qv?.amount);
+            return (dt && isSameDay(dt, today)) ? sum + amt : sum;
+          }, 0);
+          setQuickVisitsRevenueToday(total);
+        }
+      } catch { /* ignore */ }
+    };
+    if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
+      fetchQuickVisits();
+    }
+    return () => { aborted = true; };
+  }, [user?.role, user?.permission]);
+
+  // Fetch Supplier Outstanding balances from consignments
+  useEffect(() => {
+    let aborted = false;
+    const fetchSupplierOutstanding = async () => {
+      try {
+        const base = import.meta.env.DEV ? '/api' : ((import.meta as any).env.VITE_API_BASE_URL || 'https://citimed-api.vercel.app');
+        const token = localStorage.getItem('token') || '';
+        const doFetch = async (scheme: 'Token' | 'Bearer', withSlash: boolean) => fetch(`${base}/pharmacy/consignments${withSlash ? '/' : ''}`, {
+          headers: {
+            'Accept': 'application/json',
+            ...(token ? { Authorization: `${scheme} ${token}` } : {}),
+          }
+        });
+        let res = await doFetch('Token', false);
+        if (!res.ok && (res.status === 404 || res.status === 405)) res = await doFetch('Token', true);
+        if (!res.ok && (res.status === 401 || res.status === 403)) res = await doFetch('Bearer', true);
+        const data = await res.json().catch(() => ({}));
+        if (!aborted) {
+          const arr: any[] = Array.isArray((data as any)?.inventories)
+            ? (data as any).inventories
+            : (Array.isArray((data as any)?.consignments)
+              ? (data as any).consignments
+              : (Array.isArray((data as any)?.data) ? (data as any).data : []));
+          const totalOutstanding = arr.reduce((sum, c: any) => {
+            const charges = moneyToNumber(c?.purchase_cost);
+            const paid = moneyToNumber(c?.total_paid);
+            const balance = (c?.balance !== undefined && c?.balance !== null) ? moneyToNumber(c?.balance) : Math.max(0, charges - paid);
+            return sum + (balance > 0 ? balance : 0);
+          }, 0);
+          setSupplierOutstanding(totalOutstanding);
+        }
+      } catch { /* ignore */ }
+    };
+    if (user?.role === 'superadmin') {
+      fetchSupplierOutstanding();
+    }
+    return () => { aborted = true; };
+  }, [user?.role]);
 
   // For over-the-counter admins: fetch total sales count (all time)
   useEffect(() => {
@@ -313,6 +445,13 @@ const Dashboard = () => {
   const isOverviewPage = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
 
   // Remove forced redirect; admins have an Admin Overview at /dashboard/admin
+
+  // Helper: parse currency-like strings to number
+  const moneyToNumber = (s: unknown) => {
+    if (s === null || s === undefined) return 0;
+    const n = Number(String(s).replace(/[^0-9.-]/g, ''));
+    return isFinite(n) ? n : 0;
+  };
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-100">
@@ -597,19 +736,7 @@ const Dashboard = () => {
                   </div>
                 )}
 
-                {(user?.role === 'superadmin') && (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
-                    <div className="flex items-center">
-                      <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
-                        <CurrencyDollarIcon className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <div className="ml-4">
-                        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Outstanding Balance</p>
-                        <p className="text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.outstanding)}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Removed duplicate Outstanding Balance card here; shown later in summary section */}
 
                 {user?.permission === 'over-the-counter' && (
                   <div className="contents">
@@ -654,17 +781,41 @@ const Dashboard = () => {
                       <div className="mt-2 text-xs text-blue-600">On track</div>
                     </div>
                     {(user?.role === 'superadmin') && (
-                      <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                        <div className="text-sm text-gray-600 dark:text-gray-300">Revenue Today</div>
-                        <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.today)}</div>
-                        <div className="mt-2 text-xs text-green-600">Paid inflow</div>
-                      </div>
+                      <>
+                        <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                          <div className="text-sm text-gray-600 dark:text-gray-300">Visit Revenue</div>
+                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(visitsRevenueToday)}</div>
+                          <div className="mt-2 text-xs text-green-600">Paid inflow from visits</div>
+                        </div>
+                        <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                          <div className="text-sm text-gray-600 dark:text-gray-300">Quick Visits Revenue</div>
+                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(quickVisitsRevenueToday)}</div>
+                          <div className="mt-2 text-xs text-emerald-600">Lab quick visits</div>
+                        </div>
+                        <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                          <div className="text-sm text-gray-600 dark:text-gray-300">Pharmacy Sales Revenue</div>
+                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(pharmacyRevenueToday)}</div>
+                          <div className="mt-2 text-xs text-purple-600">Sales today</div>
+                        </div>
+                        <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                          <div className="text-sm text-gray-600 dark:text-gray-300">All Revenue</div>
+                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES((visitsRevenueToday || 0) + (quickVisitsRevenueToday || 0) + (pharmacyRevenueToday || 0))}</div>
+                          <div className="mt-2 text-xs text-blue-600">Visits + Quick + Pharmacy</div>
+                        </div>
+                      </>
                     )}
                     {user?.role === 'superadmin' && (
                       <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
                         <div className="text-sm text-gray-600 dark:text-gray-300">Outstanding Balance</div>
                         <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(dashboardData.balances.outstanding)}</div>
                         <div className="mt-2 text-xs text-orange-600">Follow-ups needed</div>
+                      </div>
+                    )}
+                    {user?.role === 'superadmin' && (
+                      <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
+                        <div className="text-sm text-gray-600 dark:text-gray-300">Supplier Outstanding</div>
+                        <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(supplierOutstanding)}</div>
+                        <div className="mt-2 text-xs text-amber-600">Consignments due</div>
                       </div>
                     )}
                   </div>

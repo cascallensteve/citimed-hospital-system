@@ -1,24 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 
-// Resolve API base
+// Resolve API base (strip trailing slashes to avoid `//visits/...` which can trigger redirects on preflight)
 const getApiBase = () => {
   const explicit = (import.meta as any).env?.VITE_API_BASE_URL;
-  if (explicit && typeof explicit === 'string' && explicit.trim()) return explicit.trim();
+  const normalizedEnv = (explicit && typeof explicit === 'string') ? explicit.trim().replace(/\/+$/, '') : '';
+  if (normalizedEnv) return normalizedEnv;
   return import.meta.env.DEV ? '/api' : 'https://citimed-api.vercel.app';
 };
 
-// Robust authorized fetch that tries Token and Bearer, and trailing slash variants handled by caller
+// Authorized fetch: prefer Token then fall back to Bearer; include Accept header
 const authFetch = async (url: string, init?: RequestInit) => {
   const token = localStorage.getItem('token') || '';
-  return fetch(url, {
+  const baseHeaders = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    ...(init?.headers || {}),
+  } as Record<string, string>;
+  const doFetch = (scheme: 'Token' | 'Bearer') => fetch(url, {
     ...(init || {}),
     headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Token ${token}` } : {}),
-    } as any,
+      ...baseHeaders,
+      ...(token ? { Authorization: `${scheme} ${token}` } : {}),
+    },
   });
+  // Try Token first
+  let res = await doFetch('Token');
+  if (res.status === 401 || res.status === 403) {
+    const alt = await doFetch('Bearer');
+    if (alt.ok) return alt;
+    return res;
+  }
+  if (!res.ok) {
+    const alt = await doFetch('Bearer');
+    if (alt.ok) return alt;
+    return res;
+  }
+  return res;
 };
 
 const QuickVisits = () => {
@@ -51,6 +69,26 @@ const QuickVisits = () => {
   };
 
   useEffect(() => { loadAll(); }, []);
+
+  // Money parsing helper
+  const moneyToNumber = (s: unknown) => {
+    if (s === null || s === undefined) return 0;
+    const n = Number(String(s).replace(/[^0-9.-]/g, ''));
+    return isFinite(n) ? n : 0;
+  };
+
+  // Totals
+  const totals = useMemo(() => {
+    const now = new Date();
+    const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    const all = (items || []).reduce((sum, it) => sum + moneyToNumber(it?.amount), 0);
+    const today = (items || []).reduce((sum, it) => {
+      const ts = it?.timestamp || it?.created_at || it?.date || it?.createdAt;
+      const dt = ts ? new Date(ts) : null;
+      return (dt && isSameDay(dt, now)) ? (sum + moneyToNumber(it?.amount)) : sum;
+    }, 0);
+    return { all, today };
+  }, [items]);
 
   const fmtKES = (v: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(v || 0);
   const openPrintWindow = (_: string, content: string) => {
@@ -272,6 +310,17 @@ const QuickVisits = () => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">All Quick Visits</h3>
           <button onClick={loadAll} disabled={loading} className="px-3 py-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800">{loading ? 'Refreshing…' : 'Refresh'}</button>
+        </div>
+        {/* Totals summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="rounded-md border border-gray-200 p-3">
+            <div className="text-sm text-gray-500">Today's Quick Visits Total</div>
+            <div className="text-lg font-semibold text-gray-900">{fmtKES(totals.today)}</div>
+          </div>
+          <div className="rounded-md border border-gray-200 p-3">
+            <div className="text-sm text-gray-500">All-Time Quick Visits Total</div>
+            <div className="text-lg font-semibold text-gray-900">{fmtKES(totals.all)}</div>
+          </div>
         </div>
         {loading ? (
           <div className="text-gray-500">Loading…</div>
