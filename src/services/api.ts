@@ -13,7 +13,7 @@ type RequestOptions = {
   // When true, do not attach any Authorization header even if a token exists in storage
   noAuth?: boolean;
 };
-
+ 
 // Payload types for creation endpoints
 export type AddPharmacyItemPayload = {
   name: string;
@@ -336,6 +336,10 @@ export const pharmacyApi = {
     request<{ Item: PharmacyItem }>(`/pharmacy/add-item`, 'POST', payload),
   addSale: (payload: CreatePharmacySalePayload) =>
     request<{ Sale: PharmacySale }>(`/pharmacy/add-sale`, 'POST', payload),
+
+  // Edit item (name, unit_name, sales_instructions)
+  editItem: (id: number, payload: { name?: string; unit_name?: string; sales_instructions?: string }) =>
+    request<{ item: PharmacyItem }>(`/pharmacy/edit-item/${id}/`, 'PUT', payload),
 
   // Generic CRUD (keep scaffold in case other parts rely on it)
   listItems: (query?: { search?: string; page?: number; limit?: number }) =>

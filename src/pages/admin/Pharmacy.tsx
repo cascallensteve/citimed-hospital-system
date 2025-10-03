@@ -77,6 +77,7 @@ const Pharmacy = () => {
   const consignmentCacheRef = useRef<Map<number, any>>(new Map());
   const [selectedItem, setSelectedItem] = useState<PharmacyItem | null>(null);
   const [editItem, setEditItem] = useState<PharmacyItem | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; unit_name: string; unit_price: string; discount: string; sales_instructions: string }>({ name: '', unit_name: '', unit_price: '', discount: '', sales_instructions: '' });
   const canAddConsignment = (user?.role === 'superadmin') || ((user as any)?.permission === 'over-the-counter');
   const canUsePharmacy = (
     user?.role === 'superadmin' ||
@@ -138,6 +139,62 @@ const Pharmacy = () => {
     discount: '' as number | '',
     sales_instructions: '',
   });
+
+  // Initialize edit form when opening Edit modal
+  useEffect(() => {
+    if (showEditItem && editItem) {
+      setEditForm({
+        name: editItem.name || '',
+        unit_name: (editItem as any).unitName || (editItem as any).unit_name || '',
+        unit_price: ((editItem as any).unitPrice ?? (editItem as any).unit_price ?? '') === null ? '' : String((editItem as any).unitPrice ?? (editItem as any).unit_price ?? ''),
+        discount: ((editItem as any).discount ?? '') === null ? '' : String((editItem as any).discount ?? ''),
+        sales_instructions: (editItem as any).salesInstructions || (editItem as any).sales_instructions || '',
+      });
+    }
+  }, [showEditItem, editItem]);
+
+  const handleSubmitEditItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editItem) return;
+    try {
+      const idNum = parseInt(String(editItem.id), 10);
+      const payload: any = {
+        name: editForm.name.trim(),
+        unit_name: editForm.unit_name.trim(),
+        sales_instructions: editForm.sales_instructions.trim(),
+      };
+      // Optionally include unit_price and discount if provided (backend may ignore if not supported)
+      const priceNum = parseFloat(editForm.unit_price);
+      if (!isNaN(priceNum) && isFinite(priceNum)) payload.unit_price = priceNum;
+      const discountNum = parseFloat(editForm.discount);
+      if (!isNaN(discountNum) && isFinite(discountNum)) payload.discount = discountNum;
+      const res = await api.pharmacy.editItem(idNum, payload);
+      const updated = res.item as any;
+      // Update local items list
+      setItems(prev => prev.map(it => String(it.id) === String(updated.id)
+        ? {
+            ...it,
+            name: updated.name ?? it.name,
+            unitName: updated.unit_name ?? (it as any).unitName,
+            salesInstructions: updated.sales_instructions ?? (it as any).salesInstructions,
+          }
+        : it));
+      // Update global cache too
+      try {
+        const cached = Array.isArray(cachedItems) ? cachedItems.slice() : [];
+        const idx = cached.findIndex((ci: any) => String(ci.id) === String(updated.id));
+        if (idx >= 0) {
+          cached[idx] = { ...cached[idx], ...updated };
+          setCachedItems(cached as any);
+        }
+      } catch {}
+      toast.success('Item updated');
+      setShowEditItem(false);
+      setEditItem(null);
+    } catch (err) {
+      toast.error(`Failed to update item: ${((err as Error)?.message) || 'Unknown error'}`);
+    }
+  };
 
   // Add Consignment (multi-line) form state
   const [addConsignment, setAddConsignment] = useState({
@@ -1463,6 +1520,80 @@ const Pharmacy = () => {
                   Add Consignment
                 </button>
               )}
+
+      {/* Edit Item Modal */}
+      {showEditItem && editItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-gray-900">Edit Item</h3>
+              <button onClick={() => { setShowEditItem(false); setEditItem(null); }} className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Close</button>
+            </div>
+            <form onSubmit={handleSubmitEditItem} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unit Name</label>
+                <select
+                  value={editForm.unit_name}
+                  onChange={(e) => setEditForm(f => ({ ...f, unit_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                >
+                  <option value="">Select Unit</option>
+                  <option value="tablets">Tablets</option>
+                  <option value="syrup">Syrup</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editForm.unit_price}
+                    onChange={(e) => setEditForm(f => ({ ...f, unit_price: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Discount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editForm.discount}
+                    onChange={(e) => setEditForm(f => ({ ...f, discount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sales Instructions</label>
+                <textarea
+                  value={editForm.sales_instructions}
+                  onChange={(e) => setEditForm(f => ({ ...f, sales_instructions: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => { setShowEditItem(false); setEditItem(null); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
             </div>
           </div>
         </div>
@@ -1587,7 +1718,7 @@ const Pharmacy = () => {
           </form>
         </div>
       )}
-      {!(showAddItemForm || showSaleForm || showStockForm) && (
+      {!(showAddItemForm || showSaleForm || showStockForm || showAddConsignmentForm) && (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {activeTab === 'sales' && (
           <>
@@ -1722,7 +1853,7 @@ const Pharmacy = () => {
         </div>
       )}
 
-      {!(showAddItemForm || showSaleForm || showStockForm) && (
+      {!(showAddItemForm || showSaleForm || showStockForm || showAddConsignmentForm) && (
       <div className="bg-white rounded-lg shadow-sm">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-3 px-6 py-3">
@@ -1913,20 +2044,12 @@ const Pharmacy = () => {
                           <EyeIcon className="h-4 w-4 text-white" />
                         </button>
                         <button
-                          onClick={() => handleOpenStockForm(item)}
-                          className="inline-flex items-center justify-center rounded-full bg-green-600 hover:bg-green-700 p-2"
-                          aria-label="Add stock"
-                          title="Stock"
+                          onClick={() => { setEditItem(item); setShowEditItem(true); }}
+                          className="inline-flex items-center justify-center rounded-full bg-yellow-600 hover:bg-yellow-700 p-2"
+                          aria-label="Edit item"
+                          title="Edit"
                         >
-                          <PlusIcon className="h-4 w-4 text-white" />
-                        </button>
-                        <button
-                          onClick={() => openItemConsignments(item)}
-                          className="inline-flex items-center justify-center rounded-full bg-yellow-500 hover:bg-yellow-600 p-2"
-                          aria-label="View consignments"
-                          title="Consignments"
-                        >
-                          <MagnifyingGlassIcon className="h-4 w-4 text-white" />
+                          <PencilIcon className="h-4 w-4 text-white" />
                         </button>
                         <button
                           onClick={() => printItem(item)}
