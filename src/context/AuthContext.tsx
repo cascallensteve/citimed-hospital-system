@@ -99,6 +99,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       setUser(loggedIn);
       try { localStorage.setItem('user', JSON.stringify(loggedIn)); } catch {}
+      // Notify app to preload all data immediately after login
+      try { window.dispatchEvent(new Event('citimed-login')); } catch {}
       return loggedIn;
     } catch (error) {
       console.error('Login failed:', error);
@@ -114,17 +116,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       email: response.user.email,
       role: 'superadmin',
       first_name: response.user.first_name,
-      last_name: response.user.last_name,
       userType: response.user.userType,
       is_email_verified: response.user.is_email_verified,
     };
     setUser(u);
     try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
+    // Notify app to preload all data immediately after verify
+    try { window.dispatchEvent(new Event('citimed-login')); } catch {}
   };
 
   const signupAdmin = async (first_name: string, last_name: string, email: string, password: string, permission: 'out-door-patient' | 'over-the-counter') => {
     const response = await authApi.adminSignUp({ first_name, last_name, email, password, permission });
-    // Keep current logged-in superadmin; do not switch session to the new admin
+    // Notify app to preload all data immediately after signup
+    try { window.dispatchEvent(new Event('citimed-login')); } catch {}
     // Optionally return created user data to caller
     return response.user;
   };

@@ -70,6 +70,31 @@ const Dashboard = () => {
   const [transactionsToday, setTransactionsToday] = useState<number>(0);
   const [totalSalesCount, setTotalSalesCount] = useState<number>(0);
 
+  // Hydrate cards from localStorage to avoid flashing zeros on refresh in production
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('dashboard_cache');
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d && typeof d === 'object') {
+        if (typeof d.patientsTotal === 'number') setPatientsTotal(d.patientsTotal);
+        if (typeof d.patientsNewToday === 'number') setPatientsNewToday(d.patientsNewToday);
+        if (typeof d.pharmacyItemsCount === 'number') setPharmacyItemsCount(d.pharmacyItemsCount);
+        if (typeof d.visitsToday === 'number') setVisitsToday(d.visitsToday);
+        if (typeof d.visitsThisWeek === 'number') setVisitsThisWeek(d.visitsThisWeek);
+        if (typeof d.revenueToday === 'number') setRevenueToday(d.revenueToday);
+        if (typeof d.visitsRevenueToday === 'number') setVisitsRevenueToday(d.visitsRevenueToday);
+        if (typeof d.pharmacyRevenueToday === 'number') setPharmacyRevenueToday(d.pharmacyRevenueToday);
+        if (typeof d.quickVisitsRevenueToday === 'number') setQuickVisitsRevenueToday(d.quickVisitsRevenueToday);
+        if (typeof d.quickVisitsRevenueTotal === 'number') setQuickVisitsRevenueTotal(d.quickVisitsRevenueTotal);
+        if (typeof d.outstandingBalance === 'number') setOutstandingBalance(d.outstandingBalance);
+        if (typeof d.supplierOutstanding === 'number') setSupplierOutstanding(d.supplierOutstanding);
+        if (typeof d.transactionsToday === 'number') setTransactionsToday(d.transactionsToday);
+        if (typeof d.totalSalesCount === 'number') setTotalSalesCount(d.totalSalesCount);
+      }
+    } catch {}
+  }, []);
+
   const dashboardData = {
     patients: {
       total: patientsTotal ?? 0,
@@ -101,9 +126,9 @@ const Dashboard = () => {
     if (Array.isArray(cachePatients)) {
       setPatientsTotal(cachePatients.length);
       const today = new Date();
-      const isSameDay = (d: Date, e: Date) => d.getFullYear() === e.getFullYear() && d.getMonth() === e.getMonth() && d.getDate() === e.getDate();
+      const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
       const newToday = cachePatients.filter((p: any) => {
-        const created = p?.registeredAt || p?.created_at || p?.createdAt || p?.timestamp;
+        const created = p?.registeredAt || p?.created_at || p?.createdAt || p?.timestamp || p?.date_created || p?.dateCreated;
         if (!created) return false;
         const dt = new Date(created);
         return isSameDay(dt, today);
@@ -122,7 +147,7 @@ const Dashboard = () => {
       const day = startOfWeek.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day; // Monday start
       startOfWeek.setDate(startOfWeek.getDate() + diffToMonday);
-      const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
       const inThisWeek = (d: Date) => d >= startOfWeek && d <= now;
 
       let todayCount = 0;
@@ -130,7 +155,7 @@ const Dashboard = () => {
       let todayChargesSum = 0;
       let outstanding = 0;
       cacheVisits.forEach((v: any) => {
-        const ts = v?.timestamp || v?.created_at || v?.date || v?.createdAt;
+        const ts = v?.timestamp || v?.time_stamp || v?.created_at || v?.updated_at || v?.date || v?.createdAt || v?.date_created || v?.dateCreated;
         const dt = ts ? new Date(ts) : null;
         if (dt) {
           if (isSameDay(dt, now)) todayCount += 1;
@@ -142,21 +167,24 @@ const Dashboard = () => {
         const balNum = Number(v?.balance || 0);
         if (isFinite(balNum) && balNum > 0) outstanding += balNum;
       });
-      setVisitsToday(todayCount);
-      setVisitsThisWeek(weekCount);
-      if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
-        setVisitsRevenueToday(todayChargesSum);
+      // Only update if we truly computed values; otherwise keep previous snapshot
+      if (todayCount || weekCount || todayChargesSum || outstanding || visitsToday === 0) {
+        setVisitsToday(todayCount);
+        setVisitsThisWeek(weekCount);
+        if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
+          setVisitsRevenueToday(todayChargesSum);
+        }
+        setOutstandingBalance(outstanding);
       }
-      setOutstandingBalance(outstanding);
     }
     // Pharmacy sales (today)
     if (Array.isArray(cacheSales)) {
       const today = new Date();
-      const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
       let total = 0;
       let count = 0;
       for (const s of cacheSales) {
-        const ts = s?.timestamp || s?.created_at || s?.date || s?.createdAt;
+        const ts = s?.timestamp || s?.time_stamp || s?.created_at || s?.updated_at || s?.date || s?.createdAt || s?.date_created || s?.dateCreated;
         const dt = ts ? new Date(ts) : null;
         if (!dt || !isSameDay(dt, today)) continue;
         const lineTotal = (() => {
@@ -175,7 +203,27 @@ const Dashboard = () => {
       setPharmacyRevenueToday(total);
       setTransactionsToday(count);
     }
-  }, [cacheLoaded, cachePatients, cachePharmacyItems, cacheVisits, cacheSales, user?.role, user?.permission]);
+    // Persist latest snapshot for next reload
+    try {
+      const snapshot = {
+        patientsTotal,
+        patientsNewToday,
+        pharmacyItemsCount,
+        visitsToday,
+        visitsThisWeek,
+        revenueToday,
+        visitsRevenueToday,
+        pharmacyRevenueToday,
+        quickVisitsRevenueToday,
+        quickVisitsRevenueTotal,
+        outstandingBalance,
+        supplierOutstanding,
+        transactionsToday,
+        totalSalesCount,
+      };
+      localStorage.setItem('dashboard_cache', JSON.stringify(snapshot));
+    } catch {}
+  }, [cacheLoaded, cachePatients, cachePharmacyItems, cacheVisits, cacheSales, user?.role, user?.permission, patientsTotal, patientsNewToday, pharmacyItemsCount, visitsToday, visitsThisWeek, revenueToday, visitsRevenueToday, pharmacyRevenueToday, quickVisitsRevenueToday, quickVisitsRevenueTotal, outstandingBalance, supplierOutstanding, transactionsToday, totalSalesCount]);
 
   // If caches are empty post-load, trigger a background refresh once to populate real values (production-safe)
   useEffect(() => {
@@ -375,9 +423,8 @@ const Dashboard = () => {
         }
       } catch {/* ignore */}
     };
-    if (user?.permission === 'over-the-counter' || user?.role === 'superadmin') {
-      fetchSalesToday();
-    }
+    // Always fetch to make sure production cards are accurate regardless of role
+    fetchSalesToday();
     return () => { aborted = true; };
   }, [user?.permission, user?.role]);
 
@@ -416,9 +463,8 @@ const Dashboard = () => {
         }
       } catch { /* ignore */ }
     };
-    if (user?.role === 'superadmin' || user?.permission === 'out-door-patient') {
-      fetchQuickVisits();
-    }
+    // Always fetch: compute locally and show if available
+    fetchQuickVisits();
     return () => { aborted = true; };
   }, [user?.role, user?.permission]);
 
@@ -455,9 +501,8 @@ const Dashboard = () => {
         }
       } catch { /* ignore */ }
     };
-    if (user?.role === 'superadmin') {
-      fetchSupplierOutstanding();
-    }
+    // Always fetch: it will compute to 0 if not permitted
+    fetchSupplierOutstanding();
     return () => { aborted = true; };
   }, [user?.role]);
 
@@ -476,11 +521,21 @@ const Dashboard = () => {
         }
       } catch {/* ignore */}
     };
-    if (user?.permission === 'over-the-counter') {
-      fetchTotalSales();
-    }
+    // Always fetch
+    fetchTotalSales();
     return () => { aborted = true; };
   }, [user?.permission]);
+
+  // Final fallback: if after refreshAll caches are still empty, run direct fetches to populate cards
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    const hasData = (patientsTotal ?? 0) > 0 || visitsToday > 0 || pharmacyItemsCount > 0 || revenueToday > 0 || quickVisitsRevenueTotal > 0;
+    if (hasData) return;
+    const token = localStorage.getItem('token') || '';
+    if (!token) return;
+    // Trigger the existing effects by calling refreshAll (which we already do), and also run direct fetches by re-invoking the API effects via a state tick
+    refreshAll().catch(()=>{});
+  }, [cacheLoaded, patientsTotal, visitsToday, pharmacyItemsCount, revenueToday, quickVisitsRevenueTotal, refreshAll]);
 
   // Currency formatter KES
   const formatKES = (value: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(value || 0);

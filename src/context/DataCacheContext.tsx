@@ -226,6 +226,13 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => { preload(); }, []);
 
+  // Also preload immediately after a successful login/signup/verify event
+  useEffect(() => {
+    const onLogin = () => { refreshAll().catch(() => {}); };
+    window.addEventListener('citimed-login', onLogin);
+    return () => window.removeEventListener('citimed-login', onLogin);
+  }, []);
+
   const refreshAll = async () => {
     setLoaded(false);
     await preload();
