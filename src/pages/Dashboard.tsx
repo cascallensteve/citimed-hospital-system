@@ -62,6 +62,7 @@ const Dashboard = () => {
   const [visitsRevenueToday, setVisitsRevenueToday] = useState<number>(0);
   const [pharmacyRevenueToday, setPharmacyRevenueToday] = useState<number>(0);
   const [quickVisitsRevenueToday, setQuickVisitsRevenueToday] = useState<number>(0);
+  const [quickVisitsRevenueTotal, setQuickVisitsRevenueTotal] = useState<number>(0);
   const [outstandingBalance, setOutstandingBalance] = useState<number>(0);
   const [supplierOutstanding, setSupplierOutstanding] = useState<number>(0);
   const [transactionsToday, setTransactionsToday] = useState<number>(0);
@@ -282,7 +283,7 @@ const Dashboard = () => {
     return () => { aborted = true; };
   }, [user?.permission, user?.role]);
 
-  // Fetch today's Quick Visits revenue (sum of today's amounts)
+  // Fetch Quick Visits revenue: both today's and all-time totals
   useEffect(() => {
     let aborted = false;
     const fetchQuickVisits = async () => {
@@ -303,13 +304,17 @@ const Dashboard = () => {
           const arr: any[] = Array.isArray((data as any)?.quick_visits) ? (data as any).quick_visits : (Array.isArray((data as any)?.items) ? (data as any).items : (Array.isArray((data as any)?.data) ? (data as any).data : []));
           const today = new Date();
           const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-          const total = arr.reduce((sum, qv: any) => {
+          let totalToday = 0;
+          let totalAll = 0;
+          for (const qv of arr) {
             const ts = qv?.timestamp || qv?.created_at || qv?.date || qv?.createdAt;
             const dt = ts ? new Date(ts) : null;
             const amt = moneyToNumber(qv?.amount);
-            return (dt && isSameDay(dt, today)) ? sum + amt : sum;
-          }, 0);
-          setQuickVisitsRevenueToday(total);
+            totalAll += amt;
+            if (dt && isSameDay(dt, today)) totalToday += amt;
+          }
+          setQuickVisitsRevenueToday(totalToday);
+          setQuickVisitsRevenueTotal(totalAll);
         }
       } catch { /* ignore */ }
     };
@@ -788,9 +793,9 @@ const Dashboard = () => {
                           <div className="mt-2 text-xs text-green-600">Paid inflow from visits</div>
                         </div>
                         <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
-                          <div className="text-sm text-gray-600 dark:text-gray-300">Quick Visits Revenue</div>
-                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(quickVisitsRevenueToday)}</div>
-                          <div className="mt-2 text-xs text-emerald-600">Lab quick visits</div>
+                          <div className="text-sm text-gray-600 dark:text-gray-300">Quick Visits Revenue (Total)</div>
+                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES(quickVisitsRevenueTotal)}</div>
+                          <div className="mt-2 text-xs text-emerald-600">All-time quick visits</div>
                         </div>
                         <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
                           <div className="text-sm text-gray-600 dark:text-gray-300">Pharmacy Sales Revenue</div>
@@ -799,8 +804,8 @@ const Dashboard = () => {
                         </div>
                         <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4">
                           <div className="text-sm text-gray-600 dark:text-gray-300">All Revenue</div>
-                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES((visitsRevenueToday || 0) + (quickVisitsRevenueToday || 0) + (pharmacyRevenueToday || 0))}</div>
-                          <div className="mt-2 text-xs text-blue-600">Visits + Quick + Pharmacy</div>
+                          <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{formatKES((visitsRevenueToday || 0) + (quickVisitsRevenueTotal || 0) + (pharmacyRevenueToday || 0))}</div>
+                          <div className="mt-2 text-xs text-blue-600">Visits (today) + Quick (total) + Pharmacy (today)</div>
                         </div>
                       </>
                     )}

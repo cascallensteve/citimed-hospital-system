@@ -37,6 +37,9 @@ interface Visit {
   uploader_name?: string;
   uploader_info?: string;
   uploader?: number;
+  // optional raw arrays from backend detail for rendering
+  services?: any[];
+  drugs?: any[];
 }
 
 interface PatientShort {
@@ -574,6 +577,9 @@ const Visits = () => {
     uploader_name: v?.uploader_name || v?.uploader_info || v?.uploaderName || v?.uploaderInfo || '',
     uploader_info: v?.uploader_info || v?.uploader_name || '',
     uploader: v?.uploader,
+    // include arrays if present for detail view
+    ...(Array.isArray(v?.services) ? { services: v.services } : {}),
+    ...(Array.isArray(v?.drugs) ? { drugs: v.drugs } : {}),
   });
 
   const resolvePatientName = (patientId?: number) => {
@@ -2203,6 +2209,61 @@ const Visits = () => {
                       })()}
                     </div>
                   </div>
+                </div>
+                {/* Services and Drugs */}
+                <div className="rounded-lg border border-gray-100 p-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Services</h4>
+                  {(() => {
+                    const arr: any[] = Array.isArray((selectedVisit as any)?.services) ? (selectedVisit as any).services : [];
+                    if (!arr.length) return (<p className="text-sm text-gray-800">—</p>);
+                    return (
+                      <ul className="divide-y divide-gray-100">
+                        {arr.map((s: any, i: number) => {
+                          const title = String(s?.title || s?.name || 'Service');
+                          const price = Number(String(s?.cost || '0').replace(/[^0-9.\-]/g, '')) || 0;
+                          return (
+                            <li key={i} className="flex justify-between py-1.5 text-sm text-gray-800">
+                              <span>{title}</span>
+                              <span>Ksh {price.toFixed(2)}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    );
+                  })()}
+                </div>
+                <div className="rounded-lg border border-gray-100 p-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Prescription</h4>
+                  {(() => {
+                    const arr: any[] = Array.isArray((selectedVisit as any)?.drugs) ? (selectedVisit as any).drugs : [];
+                    if (!arr.length) return (<p className="text-sm text-gray-800">—</p>);
+                    const list = (Array.isArray(cachedPharmacy) ? cachedPharmacy : []) as any[];
+                    return (
+                      <ul className="divide-y divide-gray-100">
+                        {arr.map((d: any, i: number) => {
+                          const qty = Number(d?.quantity || 0) || 0;
+                          const unit = Number(String(d?.cost || '0').replace(/[^0-9.\-]/g, '')) || 0;
+                          const disc = Number(String(d?.discount || '0').replace(/[^0-9.\-]/g, '')) || 0;
+                          const total = Math.max(0, (unit * qty) - disc);
+                          const backendName = (d?.drug_name || d?.item_name || d?.name || d?.title || '').toString();
+                          let name = backendName;
+                          if (!name && d?.item) {
+                            const found = list.find(it => Number(it?.id) === Number(d.item));
+                            name = String(found?.name || '');
+                          }
+                          if (!name && d?.item) {
+                            name = `Item #${d.item}`;
+                          }
+                          return (
+                            <li key={i} className="flex justify-between py-1.5 text-sm text-gray-800">
+                              <span>{name || 'Drug'}</span>
+                              <span>Ksh {total.toFixed(2)}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
