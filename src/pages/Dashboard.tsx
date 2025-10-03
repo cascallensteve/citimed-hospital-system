@@ -21,7 +21,7 @@ type NavItem = { name: string; to: string; icon: any };
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const { loaded: cacheLoaded, patients: cachePatients, pharmacyItems: cachePharmacyItems, visits: cacheVisits, sales: cacheSales, refreshAll } = useDataCache();
+  const { loaded: cacheLoaded, patients: cachePatients, pharmacyItems: cachePharmacyItems, visits: cacheVisits, sales: cacheSales, consignments: cacheConsignments, quickVisits: cacheQuickVisits, refreshAll } = useDataCache();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -40,6 +40,32 @@ const Dashboard = () => {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
+    }
+    // Quick Visits revenue (today + total) from cache
+    if (Array.isArray(cacheQuickVisits)) {
+      const today = new Date();
+      const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+      let totalAll = 0;
+      let totalToday = 0;
+      for (const qv of cacheQuickVisits) {
+        const ts = qv?.timestamp || qv?.created_at || qv?.date || qv?.createdAt || qv?.date_created || qv?.dateCreated;
+        const dt = ts ? new Date(ts) : null;
+        const amt = moneyToNumber(qv?.amount);
+        totalAll += amt;
+        if (dt && isSameDay(dt, today)) totalToday += amt;
+      }
+      setQuickVisitsRevenueTotal(totalAll);
+      setQuickVisitsRevenueToday(totalToday);
+    }
+    // Supplier Outstanding from cached consignments
+    if (Array.isArray(cacheConsignments)) {
+      const totalOutstanding = cacheConsignments.reduce((sum: number, c: any) => {
+        const charges = moneyToNumber(c?.purchase_cost);
+        const paid = moneyToNumber(c?.total_paid);
+        const balance = (c?.balance !== undefined && c?.balance !== null) ? moneyToNumber(c?.balance) : Math.max(0, charges - paid);
+        return sum + (balance > 0 ? balance : 0);
+      }, 0);
+      setSupplierOutstanding(totalOutstanding);
     }
   }, []);
 
@@ -223,7 +249,7 @@ const Dashboard = () => {
       };
       localStorage.setItem('dashboard_cache', JSON.stringify(snapshot));
     } catch {}
-  }, [cacheLoaded, cachePatients, cachePharmacyItems, cacheVisits, cacheSales, user?.role, user?.permission, patientsTotal, patientsNewToday, pharmacyItemsCount, visitsToday, visitsThisWeek, revenueToday, visitsRevenueToday, pharmacyRevenueToday, quickVisitsRevenueToday, quickVisitsRevenueTotal, outstandingBalance, supplierOutstanding, transactionsToday, totalSalesCount]);
+  }, [cacheLoaded, cachePatients, cachePharmacyItems, cacheVisits, cacheSales, cacheConsignments, cacheQuickVisits, user?.role, user?.permission, patientsTotal, patientsNewToday, pharmacyItemsCount, visitsToday, visitsThisWeek, revenueToday, visitsRevenueToday, pharmacyRevenueToday, quickVisitsRevenueToday, quickVisitsRevenueTotal, outstandingBalance, supplierOutstanding, transactionsToday, totalSalesCount]);
 
   // If caches are empty post-load, trigger a background refresh once to populate real values (production-safe)
   useEffect(() => {
